@@ -104,7 +104,7 @@ footer{
 
 /* short iPhones */
 @media(max-height:740px){
-  .hist{height:22px}
+
   #app{padding-top:calc(8px + env(safe-area-inset-top));padding-bottom:calc(7px + env(safe-area-inset-bottom))}
   #core{height:27vh;min-height:145px}
   .hist{display:none}
@@ -133,7 +133,7 @@ footer{
     <canvas id="core" width="300" height="280"></canvas>
     <input class="entSlider" id="entropy" type="range" min="0" max="100" value="43">
     <div class="order"><span>ORDER</span><span>CHAOS</span></div>
-    <div class="hist entHist" id="entropyHist"></div><div class="memory entMemory" id="entropyMemory"></div>
+    <div class="hist entHist" id="entropyHist"></div>
   </div>
 </section>
 
@@ -147,28 +147,32 @@ footer{
   <div class="fx">
     <div class="fxcell">
       <div class="fxhead"><span>ECHO</span><span id="echoV">0</span></div>
-      <div class="memory" id="echoMem">00 00 00 00 00 00</div>
       <input id="echo" type="range" min="0" max="100" value="0">
     </div>
     <div class="fxcell">
       <div class="fxhead"><span>HALL</span><span id="hallV">10</span></div>
-      <div class="memory" id="hallMem">0A 1C 2E 30 44 58</div>
       <input id="hall" type="range" min="0" max="100" value="10">
     </div>
     <div class="fxcell">
       <div class="fxhead"><span>VOLUME</span><span id="volumeV">78</span></div>
-      <div class="memory" id="volumeMem">4E 52 58 60 64 72</div>
       <input id="volume" type="range" min="0" max="100" value="78">
     </div>
   </div>
 
-  <footer><span>ver. 1.4.0</span><span>MM-001</span></footer>
+  <footer><span>ver. 1.5.0</span><span>MM-001</span></footer>
 </section>
 </main>
 
 <script>
 const $=id=>document.getElementById(id);
-const defs=[['AIR','atmospheric bed',50],['DRONE','harmonic field',35],['GHOST','rare events',18],['CRACKLE','micro ignition',16]];
+const defs=[['AIR','atmospheric bed',50],['DRONE','harmonic field',35],['GHOST','rare events',18],['PYRO','spark events',16]];
+const metricDefs={
+  AIR:[['FLUX',''],['BAND','Hz'],['DRIFT','']],
+  DRONE:[['ROOT','Hz'],['DETUNE','ct'],['DENS','']],
+  GHOST:[['RATE','/m'],['DECAY','s'],['DEPTH','']],
+  PYRO:[['RATE','/s'],['BRIGHT','Hz'],['BURST','']]
+};
+
 const holder=$('params');
 
 defs.forEach(([n,s,v])=>{
@@ -177,8 +181,15 @@ defs.forEach(([n,s,v])=>{
     <div class="ph"><span class="pname">${n}</span><span class="pval" id="${n}Now">${v.toFixed(4)}</span></div>
     <div class="desc">${s}</div>
     <input id="${n}" type="range" min="0" max="100" value="${v}">
-    <div class="hist" id="${n}Hist"></div><div class="glyphs" id="${n}Glyphs">× + · / △ □ ◇ # 0 1</div>
+    <div class="metrics" id="${n}Metrics"></div>
+
   </section>`);
+});
+defs.forEach(([n])=>{
+  const m=$(n+'Metrics');
+  if(m){
+    m.innerHTML=metricDefs[n].map((d,i)=>`<div class="metric"><div class="mk">${d[0]}</div><div class="mv" id="${n}M${i}">--</div></div>`).join('');
+  }
 });
 
 let ctx=null, master=null, comp=null;
@@ -188,7 +199,7 @@ let hall=null, hallWet=null;
 let airGain=null, droneGain=null;
 let started=false,startTime=0,timer=null,ghostTimer=null,crackleTimer=null;
 let seed=Math.floor(Math.random()*0xffffffff),phase=0,nodes=[];
-let vals={AIR:50,DRONE:35,GHOST:18,CRACKLE:16,entropy:43};
+let vals={AIR:50,DRONE:35,GHOST:18,PYRO:16,entropy:43};
 
 function rng(){seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
 function noiseBuffer(sec=2){
@@ -298,7 +309,7 @@ function fireCrackle(){
   clearTimeout(crackleTimer);
   if(!started||!ctx)return;
 
-  const amt=+$('CRACKLE').value/100;
+  const amt=+$('PYRO').value/100;
   const ent=+$('entropy').value/100;
 
   // At low values: sparse ticks. At high values: clusters and little bursts.
@@ -328,13 +339,13 @@ function fireCrackle(){
 
         const hp=ctx.createBiquadFilter();
         hp.type='highpass';
-        hp.frequency.value=700+rng()*1700;
+        hp.frequency.value=1800+rng()*2200;
         hp.Q.value=.25+rng()*.8;
 
         const bp=ctx.createBiquadFilter();
         bp.type='bandpass';
-        bp.frequency.value=1600+rng()*4300;
-        bp.Q.value=.5+rng()*2.2;
+        bp.frequency.value=2800+rng()*5200;
+        bp.Q.value=.7+rng()*2.8;
 
         const g=ctx.createGain();
         const level=.012+amt*.055+rng()*.025;
@@ -349,28 +360,16 @@ function fireCrackle(){
         // Mostly dry/nearby, with smaller sends into the shared space.
         g.connect(dryBus);
         const echoSend=ctx.createGain();
-        echoSend.gain.value=.20;
+        echoSend.gain.value=.12;
         const hallSend=ctx.createGain();
-        hallSend.gain.value=.16;
+        hallSend.gain.value=.08;
         g.connect(echoSend).connect(echoDelay);
         g.connect(hallSend).connect(hall);
 
         s.start(t);
         s.stop(t+dur+.02);
-
-        // Occasional tiny lower "wood" knock under the snap.
-        if(rng()<.20+amt*.22){
-          const o=ctx.createOscillator(),og=ctx.createGain();
-          o.type='sine';
-          o.frequency.value=90+rng()*170;
-          og.gain.setValueAtTime(.0001,t);
-          og.gain.exponentialRampToValueAtTime(level*.32,t+.003);
-          og.gain.exponentialRampToValueAtTime(.0001,t+.045+rng()*.06);
-          o.connect(og).connect(dryBus);
-          o.start(t);
-          o.stop(t+.14);
-        }
       }
+    }
     }
     fireCrackle();
   },wait);
@@ -400,46 +399,59 @@ function scheduleGhost(){
   },wait*(1-ent*.2));
 }
 
-function hex2(){return Math.floor(rng()*256).toString(16).toUpperCase().padStart(2,'0')}
-function makeMemory(count=18){let a=[];for(let i=0;i<count;i++)a.push(hex2());return a.join(' ')}
-function makeGlyphs(){
-  const g=['×','+','·','/','△','□','◇','#','0','1','?','<','>','∿','∴','∵'];
-  let s='';for(let i=0;i<18;i++)s+=g[Math.floor(rng()*g.length)]+' ';return s;
-}
 function tick(){
   const ent=+$('entropy').value/100;
+
   defs.forEach(([n])=>{
     const set=+$(n).value;
-    const jitter=.035+Math.pow(ent,1.45)*1.55;
-    const pull=.025-ent*.010;
+    const jitter=.028+Math.pow(ent,1.5)*1.15;
+    const pull=.026-ent*.009;
+
     vals[n]+=(set-vals[n])*pull+(rng()-.5)*jitter;
     vals[n]=Math.max(0,Math.min(100,vals[n]));
     $(n+'Now').textContent=vals[n].toFixed(4);
-    const el=$(n+'Hist');
-    const burstCount=1+Math.floor(ent*3);
-    let add='';
-    for(let q=0;q<burstCount;q++)add+=' '+(vals[n]+(rng()-.5)*ent*2.8).toFixed(2);
-    el.textContent=(el.textContent+add).slice(-185);
-    const ge=$(n+'Glyphs');
-    if(ge&&rng()<.16+ent*.54)ge.textContent=makeGlyphs();
+
+    // Three small live parameters per generator.
+    let m0,m1,m2;
+    if(n==='AIR'){
+      m0=(0.15+vals[n]/100*.78+(rng()-.5)*ent*.16).toFixed(3);
+      m1=Math.round(420+vals[n]*29+(rng()-.5)*ent*420);
+      m2=((rng()-.5)*(0.08+ent*.72)).toFixed(3);
+    }else if(n==='DRONE'){
+      m0=(72.5+vals[n]*.018+(rng()-.5)*ent*.35).toFixed(2);
+      m1=((rng()-.5)*(3+ent*21)).toFixed(1);
+      m2=(0.20+vals[n]/100*.68+(rng()-.5)*ent*.10).toFixed(3);
+    }else if(n==='GHOST'){
+      m0=(0.4+vals[n]/100*5.8+(rng()-.5)*ent*.8).toFixed(2);
+      m1=(5+vals[n]/100*16+(rng()-.5)*ent*4).toFixed(1);
+      m2=(0.10+vals[n]/100*.82+(rng()-.5)*ent*.12).toFixed(3);
+    }else{ // PYRO
+      m0=(0.25+vals[n]/100*7.0+(rng()-.5)*ent*1.1).toFixed(2);
+      m1=Math.round(1800+vals[n]*42+(rng()-.5)*ent*900);
+      m2=(1+Math.floor(vals[n]/28+rng()*(1+ent*3))).toFixed(0);
+    }
+
+    const values=[m0,m1,m2];
+    for(let i=0;i<3;i++){
+      const el=$(n+'M'+i);
+      if(el){
+        const unit=metricDefs[n][i][1];
+        el.textContent=values[i]+(unit?' '+unit:'');
+      }
+    }
   });
 
-  const eJitter=.05+Math.pow(ent,1.5)*1.45;
+  const eJitter=.04+Math.pow(ent,1.55)*1.25;
   vals.entropy+=(+$('entropy').value-vals.entropy)*(.028-ent*.008)+(rng()-.5)*eJitter;
   vals.entropy=Math.max(0,Math.min(100,vals.entropy));
   $('entropyNow').textContent=vals.entropy.toFixed(4);
-  $('entropyHist').textContent=($('entropyHist').textContent+' '+vals.entropy.toFixed(2)).slice(-100);
-
-  if($('entropyMemory')&&rng()<.12+ent*.58)$('entropyMemory').textContent=makeMemory(26+Math.floor(ent*16));
-  if($('echoMem')&&rng()<.10+ent*.28)$('echoMem').textContent=makeMemory(7);
-  if($('hallMem')&&rng()<.08+ent*.26)$('hallMem').textContent=makeMemory(7);
-  if($('volumeMem')&&rng()<.07+ent*.22)$('volumeMem').textContent=makeMemory(7);
 
   if(ctx&&airGain&&droneGain){
     airGain.gain.setTargetAtTime(.006+vals.AIR/100*.105,ctx.currentTime,1.45);
     droneGain.gain.setTargetAtTime(.003+vals.DRONE/100*.065,ctx.currentTime,1.95);
     if(nodes[1])nodes[1].frequency.setTargetAtTime(320+vals.AIR*23,ctx.currentTime,2.25);
   }
+
   phase+=.0075+ent*.020;
   drawHamster(ent);
 }
