@@ -33,6 +33,13 @@ header{
 h1{font-weight:400;font-size:15px;letter-spacing:.15em;margin:0}
 .micro{font-size:8px;color:var(--dim);letter-spacing:.09em;line-height:1.45}
 .status{text-align:right;font-size:9px;color:var(--dim);line-height:1.5}
+.topStart{
+  appearance:none;-webkit-appearance:none;background:transparent;color:var(--ink);
+  border:0;border-bottom:1px solid var(--line);padding:0 0 3px;margin:0 0 2px;
+  font:9px "Courier New",monospace;letter-spacing:.13em;min-height:22px;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+}
+.topStart:active{opacity:.55}
 
 .main{
   position:relative;z-index:2;display:grid;grid-template-columns:42% 58%;gap:10px;
@@ -68,7 +75,7 @@ input[type=range]::-moz-range-thumb{width:7px;height:12px;border-radius:0;border
   min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:0 2px;
 }
-.entLabel{font-size:9px;letter-spacing:.38em;color:var(--dim);margin-bottom:1px}
+.entLabel{font-size:9px;letter-spacing:.38em;color:var(--ink);margin-bottom:1px}
 .entVal{font-size:25px;letter-spacing:.07em;font-variant-numeric:tabular-nums;margin-bottom:0}
 #core{display:block;width:100%;height:min(33vh,260px);min-height:170px}
 .entSlider{width:86%!important;margin-top:-3px!important}
@@ -91,16 +98,6 @@ input[type=range]::-moz-range-thumb{width:7px;height:12px;border-radius:0;border
 .fx input[type=range]{height:14px}
 .fx input[type=range]::-webkit-slider-thumb{width:7px;height:11px;margin-top:-5px}
 
-.controls{
-  display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px
-}
-button{
-  min-height:30px;background:transparent;color:var(--ink);border:1px solid var(--line);
-  font:8px "Courier New",monospace;letter-spacing:.11em;padding:5px 3px;
-  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
-}
-button:active{background:rgba(242,238,220,.10)}
-#diag{margin-top:4px;text-align:center;font-size:6.5px;color:var(--dim);height:8px}
 footer{
   display:flex;justify-content:space-between;margin-top:3px;font-size:6.5px;color:var(--dim);letter-spacing:.08em
 }
@@ -123,7 +120,7 @@ footer{
     <h1>AMBIENT GENERATOR</h1>
     <div class="micro">MM-001 / PROCEDURAL FIELD</div>
   </div>
-  <div class="status"><span id="run">STANDBY</span><br><span id="clock">00:00:00</span></div>
+  <div class="status"><button id="start" class="topStart">▶ START</button><br><span id="clock">00:00:00</span></div>
 </header>
 
 <section class="main">
@@ -161,13 +158,7 @@ footer{
     </div>
   </div>
 
-  <div class="controls">
-    <button id="start">▶ START</button>
-    <button id="test">♪ TEST</button>
-    <button id="reseed">● RESEED</button>
-  </div>
-  <div id="diag">AUDIO NOT INITIALIZED</div>
-  <footer><span>GENERATIVE AUDIO</span><span id="seed"></span></footer>
+  <footer><span>ver. 1.1.0</span><span>MM-001</span></footer>
 </section>
 </main>
 
@@ -196,7 +187,6 @@ let seed=Math.floor(Math.random()*0xffffffff),phase=0,nodes=[];
 let vals={AIR:50,DRONE:35,GHOST:18,entropy:43};
 
 function rng(){seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
-function setDiag(s){$('diag').textContent=s}
 function noiseBuffer(sec=2){
   const b=ctx.createBuffer(1,Math.floor(ctx.sampleRate*sec),ctx.sampleRate);
   const d=b.getChannelData(0);
@@ -275,12 +265,9 @@ async function ensureAudio(){
   try{
     if(!ctx||ctx.state==='closed')initAudio();
     if(ctx.state!=='running')await ctx.resume();
-    setDiag('AUDIO '+ctx.state.toUpperCase());
     return ctx.state==='running';
   }catch(e){
     console.error(e);
-    setDiag('AUDIO ERROR: '+e.message);
-    $('run').textContent='AUDIO ERROR';
     return false;
   }
 }
@@ -343,7 +330,7 @@ function tick(){
     droneGain.gain.setTargetAtTime(.003+vals.DRONE/100*.065,ctx.currentTime,2.1);
     if(nodes[1])nodes[1].frequency.setTargetAtTime(320+vals.AIR*23,ctx.currentTime,2.6);
   }
-  phase+=.005+ent*.003;
+  phase+=.006+ent*.008;
   drawHamster(ent);
 }
 setInterval(tick,120);
@@ -351,120 +338,237 @@ setInterval(tick,120);
 function drawHamster(ent){
   const c=$('core'),x=c.getContext('2d'),w=c.width,h=c.height;
   x.clearRect(0,0,w,h);
-  const cx=w/2,cy=h/2+8;
-  const bob=Math.sin(phase*1.45)*2;
-  const tilt=Math.sin(phase*.35)*.035;
-  const chaos=ent*7;
+
+  const cx=w/2, cy=h/2+10;
+  const wheelR=Math.min(w,h)*0.34;
+  const t=phase*5.5;
+  const chaos=Math.max(0,(ent-.18)/.82);
+  const high=Math.pow(chaos,1.7);
 
   x.save();
-  x.translate(cx,cy+bob);
-  x.rotate(tilt);
+  x.translate(cx,cy);
 
-  // orbital instrument ring
-  x.strokeStyle='rgba(242,238,220,.14)';x.lineWidth=1;
-  x.beginPath();x.ellipse(0,0,108,104,0,0,Math.PI*2);x.stroke();
-  for(let i=0;i<24;i++){
-    const a=i/24*Math.PI*2;
-    const r=106+(i%3===0?5:1);
-    x.beginPath();x.moveTo(Math.cos(a)*r,Math.sin(a)*r);
-    x.lineTo(Math.cos(a)*(r+4),Math.sin(a)*(r+4));x.stroke();
+  // guide ring
+  x.strokeStyle='rgba(242,238,220,.10)';
+  x.lineWidth=1;
+  x.beginPath();
+  x.arc(0,0,wheelR+14,0,Math.PI*2);
+  x.stroke();
+
+  // wheel polygon: orderly at low entropy, increasingly unstable at high entropy
+  const N=28;
+  let pts=[];
+  for(let i=0;i<N;i++){
+    const a=(i/N)*Math.PI*2;
+    const localNoise=(rng()-.5)*wheelR*.24*high;
+    const wave=Math.sin(a*3+t*.2)*wheelR*.035*chaos;
+    const rr=wheelR + localNoise + wave;
+    const skewX=(rng()-.5)*10*high;
+    const skewY=(rng()-.5)*10*high;
+    pts.push([
+      Math.cos(a)*rr + skewX,
+      Math.sin(a)*rr + skewY
+    ]);
   }
 
-  x.strokeStyle='rgba(242,238,220,.78)';
+  // wheel outer frame
+  x.strokeStyle='rgba(242,238,220,.72)';
+  x.lineWidth=1.1;
+  x.beginPath();
+  x.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<N;i++)x.lineTo(pts[i][0],pts[i][1]);
+  x.closePath();
+  x.stroke();
+
+  // inner wheel ring
+  x.strokeStyle='rgba(242,238,220,.30)';
+  x.beginPath();
+  for(let i=0;i<N;i++){
+    const a=(i/N)*Math.PI*2;
+    const rr=wheelR*.83 + (rng()-.5)*wheelR*.09*high;
+    const px=Math.cos(a)*rr, py=Math.sin(a)*rr;
+    if(i===0)x.moveTo(px,py); else x.lineTo(px,py);
+  }
+  x.closePath();
+  x.stroke();
+
+  // wheel ribs
+  x.strokeStyle='rgba(242,238,220,.34)';
+  for(let i=0;i<N;i+=2){
+    const p=pts[i];
+    const a=(i/N)*Math.PI*2;
+    const rr=wheelR*.83;
+    const ix=Math.cos(a)*rr, iy=Math.sin(a)*rr;
+    x.beginPath();
+    x.moveTo(ix,iy);
+    x.lineTo(p[0],p[1]);
+    x.stroke();
+  }
+
+  // support / ground
+  x.strokeStyle='rgba(242,238,220,.45)';
+  x.beginPath();
+  x.moveTo(-wheelR-20,wheelR+10);
+  x.lineTo(wheelR+20,wheelR+10);
+  x.stroke();
+  x.beginPath();
+  x.moveTo(-wheelR*.62,wheelR+10);
+  x.lineTo(-wheelR*.34,wheelR-2);
+  x.moveTo(wheelR*.62,wheelR+10);
+  x.lineTo(wheelR*.34,wheelR-2);
+  x.stroke();
+
+  // hamster: side view, running to the right
+  x.save();
+  const runBob=Math.sin(t*2)*2.1;
+  const bodyJitter=(rng()-.5)*4*high;
+  const hx=-wheelR*.22 + bodyJitter;
+  const hy=wheelR*.31 + runBob;
+  x.translate(hx,hy);
+
+  // chaos deformation offsets
+  const jd=8*high;
+  const j=()=> (rng()-.5)*jd;
+
+  x.strokeStyle='rgba(242,238,220,.86)';
   x.fillStyle='rgba(242,238,220,.92)';
   x.lineWidth=1.15;
 
-  // ears, more hamster-like, partially behind head
-  x.beginPath();x.ellipse(-37,-61,20,23,-.22,0,Math.PI*2);x.stroke();
-  x.beginPath();x.ellipse(37,-61,20,23,.22,0,Math.PI*2);x.stroke();
-  x.strokeStyle='rgba(242,238,220,.35)';
-  x.beginPath();x.ellipse(-37,-61,11,14,-.22,0,Math.PI*2);x.stroke();
-  x.beginPath();x.ellipse(37,-61,11,14,.22,0,Math.PI*2);x.stroke();
-
-  // pear-shaped body
-  x.strokeStyle='rgba(242,238,220,.78)';
+  // body
   x.beginPath();
-  x.moveTo(-43,5);
-  x.bezierCurveTo(-72,24,-64,86,-31,102);
-  x.bezierCurveTo(-7,114,7,114,31,102);
-  x.bezierCurveTo(64,86,72,24,43,5);
+  x.moveTo(-42+j(),-4+j());
+  x.bezierCurveTo(-36+j(),-28+j(),8+j(),-31+j(),40+j(),-16+j());
+  x.bezierCurveTo(56+j(),-8+j(),54+j(),14+j(),34+j(),22+j());
+  x.bezierCurveTo(8+j(),33+j(),-31+j(),24+j(),-42+j(),5+j());
+  x.closePath();
   x.stroke();
 
-  // rounded head / cheeks
+  // head/snout
   x.beginPath();
-  x.moveTo(-42,-35);
-  x.bezierCurveTo(-49,-4,-36,22,0,27);
-  x.bezierCurveTo(36,22,49,-4,42,-35);
-  x.bezierCurveTo(31,-63,-31,-63,-42,-35);
+  x.moveTo(-40+j(),-9+j());
+  x.bezierCurveTo(-56+j(),-16+j(),-66+j(),-7+j(),-63+j(),3+j());
+  x.bezierCurveTo(-59+j(),12+j(),-49+j(),14+j(),-38+j(),8+j());
   x.stroke();
 
-  // cheeks
-  x.strokeStyle='rgba(242,238,220,.38)';
-  x.beginPath();x.arc(-28,-5,17,2.0,5.25);x.stroke();
-  x.beginPath();x.arc(28,-5,17,4.18,1.15);x.stroke();
+  // ear
+  x.beginPath();
+  x.arc(-38+j(),-20+j(),8+high*2,0,Math.PI*2);
+  x.stroke();
 
-  // eyes + tiny blink
-  const blink=Math.sin(phase*2.2)>.972;
-  x.fillStyle='rgba(242,238,220,.95)';
-  if(blink){
-    x.fillRect(-24,-27,10,1);x.fillRect(14,-27,10,1);
-  }else{
-    x.beginPath();x.arc(-19,-27,3.2,0,Math.PI*2);x.fill();
-    x.beginPath();x.arc(19,-27,3.2,0,Math.PI*2);x.fill();
-  }
+  // eye
+  x.beginPath();
+  x.arc(-52+j()*.15,-7+j()*.15,2.3,0,Math.PI*2);
+  x.fill();
 
-  // nose and mouth
-  x.beginPath();x.arc(0,-11,3,0,Math.PI*2);x.fill();
-  x.strokeStyle='rgba(242,238,220,.72)';
-  x.beginPath();x.moveTo(0,-8);x.lineTo(0,-2);x.lineTo(-5,2);x.moveTo(0,-2);x.lineTo(5,2);x.stroke();
+  // nose
+  x.beginPath();
+  x.arc(-64+j()*.18,2+j()*.18,1.7,0,Math.PI*2);
+  x.fill();
 
   // whiskers
-  x.strokeStyle='rgba(242,238,220,.43)';
-  [-7,0,7].forEach((dy,i)=>{
-    const jitter=(rng()-.5)*chaos*.25;
-    x.beginPath();x.moveTo(-8,-8+dy*.45);x.lineTo(-55-jitter,-13+dy);x.stroke();
-    x.beginPath();x.moveTo(8,-8+dy*.45);x.lineTo(55+jitter,-13+dy);x.stroke();
-  });
+  x.strokeStyle='rgba(242,238,220,.45)';
+  for(let k=-1;k<=1;k++){
+    x.beginPath();
+    x.moveTo(-61,-1+k*3);
+    x.lineTo(-82-(rng()*8*high),-5+k*6+(rng()-.5)*6*high);
+    x.stroke();
+  }
 
-  // paws holding the "entropy lattice"
-  x.strokeStyle='rgba(242,238,220,.72)';
-  x.beginPath();x.ellipse(-20,29,10,13,-.2,0,Math.PI*2);x.stroke();
-  x.beginPath();x.ellipse(20,29,10,13,.2,0,Math.PI*2);x.stroke();
-
-  // geometric lattice between paws
-  const pts=[[-27,18],[0,6],[28,18],[-22,42],[0,51],[22,42],[0,28]];
+  // tail
   x.strokeStyle='rgba(242,238,220,.65)';
-  for(let i=0;i<pts.length;i++){
-    for(let j=i+1;j<pts.length;j++){
-      if(((i*5+j*7+seed)%5)<2){
-        const p=pts[i],q=pts[j];
+  x.beginPath();
+  x.arc(44+j()*.3,1+j()*.3,7,Math.PI*.55,Math.PI*1.55);
+  x.stroke();
+
+  // legs: alternating running pose
+  const run=Math.sin(t*2.8);
+  const run2=Math.sin(t*2.8+Math.PI);
+  const legChaos=10*high;
+
+  function leg(x0,y0,phaseVal,front=false){
+    const swing=phaseVal*11 + (rng()-.5)*legChaos;
+    const lift=Math.max(0,-phaseVal)*7 + (rng()-.5)*legChaos*.25;
+    x.beginPath();
+    x.moveTo(x0+j()*.2,y0+j()*.2);
+    x.lineTo(x0+swing*.55,y0+10-lift);
+    x.lineTo(x0+swing,y0+13-lift);
+    x.stroke();
+    if(front){
+      x.beginPath();
+      x.moveTo(x0+swing,y0+13-lift);
+      x.lineTo(x0+swing+5,y0+13-lift);
+      x.stroke();
+    }
+  }
+
+  x.strokeStyle='rgba(242,238,220,.78)';
+  leg(-24,15,run,false);
+  leg(-6,18,run2,false);
+  leg(18,17,run,true);
+  leg(34,14,run2,true);
+
+  // body wireframe seams
+  x.strokeStyle='rgba(242,238,220,.20)';
+  const bodyPts=[[-35,-8],[-8,-22],[20,-18],[40,-5],[-18,15],[10,20],[34,10]];
+  for(let a=0;a<bodyPts.length;a++){
+    for(let b=a+1;b<bodyPts.length;b++){
+      if(((a*5+b*7+seed)%8)<2){
         x.beginPath();
-        x.moveTo(p[0]+(rng()-.5)*chaos,p[1]+(rng()-.5)*chaos);
-        x.lineTo(q[0]+(rng()-.5)*chaos,q[1]+(rng()-.5)*chaos);
+        x.moveTo(bodyPts[a][0]+j()*.35,bodyPts[a][1]+j()*.35);
+        x.lineTo(bodyPts[b][0]+j()*.35,bodyPts[b][1]+j()*.35);
         x.stroke();
       }
     }
   }
-  pts.forEach(p=>x.fillRect(p[0]-1.3,p[1]-1.3,2.6,2.6));
 
-  // belly scan lines
-  x.strokeStyle='rgba(242,238,220,.20)';
-  for(let y=58;y<=90;y+=8){
-    const width=31-(y-58)*.22;
-    x.beginPath();x.moveTo(-width,y);x.lineTo(width,y+(rng()-.5)*ent*2);x.stroke();
+  x.restore();
+
+  // motion lines
+  x.strokeStyle='rgba(242,238,220,.22)';
+  const lines=3+Math.floor(ent*5);
+  for(let i=0;i<lines;i++){
+    const yy=-8+i*9+(rng()-.5)*8*high;
+    const xx=wheelR*.15+rng()*wheelR*.25;
+    x.beginPath();
+    x.moveTo(xx,yy);
+    x.lineTo(xx+18+rng()*25*(.4+ent),yy+(rng()-.5)*7*high);
+    x.stroke();
   }
 
-  // feet
-  x.strokeStyle='rgba(242,238,220,.55)';
-  x.beginPath();x.ellipse(-28,103,17,6,0,0,Math.PI*2);x.stroke();
-  x.beginPath();x.ellipse(28,103,17,6,0,0,Math.PI*2);x.stroke();
-
-  // sparse entropy particles
-  x.fillStyle='rgba(242,238,220,.55)';
-  for(let i=0;i<7+Math.floor(ent*18);i++){
-    const a=rng()*Math.PI*2,r=72+rng()*38;
-    x.fillRect(Math.cos(a)*r,Math.sin(a)*r,1.2,1.2);
+  // entropy fragments: break away from wheel / hamster at high entropy
+  if(ent>.35){
+    const count=Math.floor((ent-.35)*42);
+    x.strokeStyle='rgba(242,238,220,.48)';
+    x.fillStyle='rgba(242,238,220,.52)';
+    for(let i=0;i<count;i++){
+      const a=rng()*Math.PI*2;
+      const r=wheelR*(.85+rng()*.55*high);
+      const px=Math.cos(a)*r+(rng()-.5)*18*high;
+      const py=Math.sin(a)*r+(rng()-.5)*18*high;
+      if(rng()<.55){
+        x.fillRect(px,py,1.3,1.3);
+      }else{
+        x.beginPath();
+        x.moveTo(px,py);
+        x.lineTo(px+(rng()-.5)*9,py+(rng()-.5)*9);
+        x.stroke();
+      }
+    }
   }
+
+  // extreme entropy: loose stray connections
+  if(ent>.72){
+    x.strokeStyle='rgba(242,238,220,.25)';
+    const extra=Math.floor((ent-.72)*28);
+    for(let i=0;i<extra;i++){
+      const p=pts[Math.floor(rng()*pts.length)];
+      x.beginPath();
+      x.moveTo(p[0],p[1]);
+      x.lineTo(p[0]+(rng()-.5)*50*high,p[1]+(rng()-.5)*50*high);
+      x.stroke();
+    }
+  }
+
   x.restore();
 }
 
@@ -479,35 +583,25 @@ $('start').addEventListener('click',async()=>{
   if(!started){
     if(!await ensureAudio())return;
     started=true;startTime=Date.now();
-    $('start').textContent='Ⅱ PAUSE';$('run').textContent='RUNNING';
+    $('start').textContent='Ⅱ PAUSE';
     scheduleGhost();
     clearInterval(timer);
     timer=setInterval(()=>{
       const s=Math.floor((Date.now()-startTime)/1000);
-      $('clock').textContent=[s/3600,s/60%60,s%60].map(v=>String(Math.floor(v)).padStart(2,'0')).join(':');
+      $('clock').textContent=[s/3600,s/60%60,s%60]
+        .map(v=>String(Math.floor(v)).padStart(2,'0')).join(':');
     },1000);
   }else if(ctx&&ctx.state==='running'){
-    await ctx.suspend();$('start').textContent='▶ RESUME';$('run').textContent='SUSPENDED';setDiag('AUDIO SUSPENDED');
+    await ctx.suspend();
+    $('start').textContent='▶ RESUME';
   }else if(ctx){
-    await ctx.resume();$('start').textContent='Ⅱ PAUSE';$('run').textContent='RUNNING';setDiag('AUDIO RUNNING');
+    await ctx.resume();
+    $('start').textContent='Ⅱ PAUSE';
   }
 });
 
-$('test').addEventListener('click',async()=>{
-  if(!await ensureAudio())return;
-  const o=ctx.createOscillator(),g=ctx.createGain(),t=ctx.currentTime;
-  o.frequency.value=440;
-  g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.10,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.28);
-  o.connect(g).connect(ctx.destination);o.start(t);o.stop(t+.30);
-  setDiag('TEST 440Hz SENT');
-});
 
-$('reseed').addEventListener('click',()=>{
-  seed=Math.floor(Math.random()*0xffffffff);
-  $('seed').textContent='SEED '+seed.toString(16).toUpperCase().padStart(8,'0');
-});
 
-$('seed').textContent='SEED '+seed.toString(16).toUpperCase().padStart(8,'0');
 drawHamster(.43);
 </script>
 </body>
