@@ -23,6 +23,10 @@ canvas{width:100%;height:245px;display:block;margin:8px 0 6px}
 .compact{display:grid;grid-template-columns:1fr auto;gap:4px 14px;align-items:center;margin:18px 0}.compact label{font-size:12px;letter-spacing:.15em}.compact input{margin:0}.compact .v{font-size:12px;width:30px;text-align:right}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}.btn{touch-action:manipulation;-webkit-tap-highlight-color:transparent;min-height:48px}.btn{background:transparent;color:var(--ink);border:1px solid var(--line);padding:13px 8px;font:12px "Courier New",monospace;letter-spacing:.12em}
 .btn:active{background:rgba(245,241,223,.12)}
+.fxstrip{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);margin:20px 0 4px}
+.fxcell{padding:10px 9px 9px;min-width:0}.fxcell+.fxcell{border-left:1px solid var(--line)}
+.fxhead{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.12em;margin-bottom:7px}
+.fxstrip input[type=range]{margin:0;width:100%}
 footer{display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:20px;padding-top:10px;font-size:9px;color:var(--dim)}
 </style></head>
 <body><main class="app">
@@ -38,8 +42,22 @@ footer{display:flex;justify-content:space-between;border-top:1px solid var(--lin
 <div class="history" id="entropyHist"></div>
 </section>
 
-<div class="compact"><label>SPACE</label><div class="v" id="spaceV">72</div><input id="space" type="range" min="0" max="100" value="72"><span></span>
-<label>VOLUME</label><div class="v" id="volumeV">55</div><input id="volume" type="range" min="0" max="100" value="55"><span></span></div>
+<div class="compact"><label>SPACE</label><div class="v" id="spaceV">72</div><input id="space" type="range" min="0" max="100" value="72"><span></span></div>
+
+<section class="fxstrip">
+  <div class="fxcell">
+    <div class="fxhead"><span>ECHO</span><span id="echoV">18</span></div>
+    <input id="echo" type="range" min="0" max="100" value="18">
+  </div>
+  <div class="fxcell">
+    <div class="fxhead"><span>HALL</span><span id="hallV">32</span></div>
+    <input id="hall" type="range" min="0" max="100" value="32">
+  </div>
+  <div class="fxcell">
+    <div class="fxhead"><span>VOLUME</span><span id="volumeV">55</span></div>
+    <input id="volume" type="range" min="0" max="100" value="55">
+  </div>
+</section>
 
 <div class="controls">
 <button class="btn" id="start">▶ START</button>
@@ -54,19 +72,68 @@ footer{display:flex;justify-content:space-between;border-top:1px solid var(--lin
 const defs=[['AIR','atmospheric bed',50],['DRONE','harmonic field',35],['GHOST','rare events',18]];
 const holder=document.getElementById('params');
 defs.forEach(([n,s,v])=>holder.insertAdjacentHTML('beforeend',`<section class="param"><div class="paramhead"><div><div class="name">${n}</div><div class="sub">${s}</div></div><div class="current" id="${n}Now">${v.toFixed(4)}</div></div><input id="${n}" type="range" min="0" max="100" value="${v}"><div class="history" id="${n}Hist"></div></section>`));
-let ctx,master,airGain,droneGain,delay,feedback,wet,started=false,startTime=0,timer,ghostTimer,seed=Math.floor(Math.random()*0xffffffff);
+let ctx,master,airGain,droneGain,spaceBus,spaceFilter,echoDelay,echoFeedback,echoWet,hall,hallWet,started=false,startTime=0,timer,ghostTimer,seed=Math.floor(Math.random()*0xffffffff);
 let vals={AIR:50,DRONE:35,GHOST:18,entropy:43}, phase=0, nodes=[];
 function rng(){seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
 function noiseBuffer(sec=2){let b=ctx.createBuffer(1,ctx.sampleRate*sec,ctx.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(rng()*2-1);return b}
+function makeHallIR(seconds=3.2,decay=3.0){
+ const len=Math.floor(ctx.sampleRate*seconds), b=ctx.createBuffer(2,len,ctx.sampleRate);
+ for(let ch=0;ch<2;ch++){
+   const d=b.getChannelData(ch);
+   for(let i=0;i<len;i++){
+     const t=i/len;
+     d[i]=(rng()*2-1)*Math.pow(1-t,decay)*(0.72+0.28*rng());
+   }
+ }
+ return b;
+}
 function initAudio(){
  const AC = window.AudioContext || window.webkitAudioContext;
  ctx = new AC({latencyHint:'interactive'});
- master=ctx.createGain(); master.gain.value=.32; master.connect(ctx.destination);
- const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-12; comp.ratio.value=8; comp.connect(master);
- delay=ctx.createDelay(4); feedback=ctx.createGain(); wet=ctx.createGain(); delay.connect(feedback);feedback.connect(delay);delay.connect(wet);wet.connect(comp);
- let src=ctx.createBufferSource();src.buffer=noiseBuffer();src.loop=true;let bp=ctx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=900;bp.Q.value=.5;airGain=ctx.createGain();airGain.gain.value=.085;src.connect(bp).connect(airGain);airGain.connect(comp);airGain.connect(delay);src.start();nodes.push(src,bp);
- droneGain=ctx.createGain();droneGain.gain.value=.055;droneGain.connect(comp);droneGain.connect(delay);
- [73.42,110.0,146.83].forEach((f,i)=>{let o=ctx.createOscillator(),g=ctx.createGain();o.type=i? 'sine':'triangle';o.frequency.value=f*(1+(rng()-.5)*.004);g.gain.value=[.5,.22,.12][i];o.connect(g).connect(droneGain);o.start();nodes.push(o)});
+
+ master=ctx.createGain();
+ master.gain.value=.30;
+ const comp=ctx.createDynamicsCompressor();
+ comp.threshold.value=-14; comp.ratio.value=6; comp.attack.value=.01; comp.release.value=.25;
+ comp.connect(master); master.connect(ctx.destination);
+
+ // SPACE = common "distance/air" bus before final effects.
+ spaceBus=ctx.createGain();
+ spaceFilter=ctx.createBiquadFilter();
+ spaceFilter.type='lowpass'; spaceFilter.frequency.value=4200; spaceFilter.Q.value=.25;
+ spaceBus.connect(spaceFilter); spaceFilter.connect(comp);
+
+ // ECHO = independent delay send.
+ echoDelay=ctx.createDelay(3.0);
+ echoFeedback=ctx.createGain();
+ echoWet=ctx.createGain();
+ echoDelay.connect(echoFeedback); echoFeedback.connect(echoDelay);
+ echoDelay.connect(echoWet); echoWet.connect(comp);
+
+ // HALL = independent algorithm-free convolution reverb generated locally.
+ hall=ctx.createConvolver();
+ hall.buffer=makeHallIR();
+ hallWet=ctx.createGain();
+ hall.connect(hallWet); hallWet.connect(comp);
+
+ // AIR
+ let src=ctx.createBufferSource(); src.buffer=noiseBuffer(); src.loop=true;
+ let bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=900; bp.Q.value=.5;
+ airGain=ctx.createGain(); airGain.gain.value=.085;
+ src.connect(bp).connect(airGain);
+ airGain.connect(spaceBus); airGain.connect(echoDelay); airGain.connect(hall);
+ src.start(); nodes.push(src,bp);
+
+ // DRONE
+ droneGain=ctx.createGain(); droneGain.gain.value=.055;
+ droneGain.connect(spaceBus); droneGain.connect(echoDelay); droneGain.connect(hall);
+ [73.42,110.0,146.83].forEach((f,i)=>{
+   let o=ctx.createOscillator(),g=ctx.createGain();
+   o.type=i?'sine':'triangle';
+   o.frequency.value=f*(1+(rng()-.5)*.004);
+   g.gain.value=[.5,.22,.12][i];
+   o.connect(g).connect(droneGain); o.start(); nodes.push(o);
+ });
  updateFX();
 }
 function ghost(){
@@ -77,14 +144,30 @@ function ghost(){
    o.type='sine';o.frequency.value=pitches[Math.floor(rng()*pitches.length)]/((rng()<.35)?2:1);f.type='lowpass';f.frequency.value=900+1200*rng();
    let t=ctx.currentTime,a=1.5+rng()*4,d=7+rng()*13,amp=.008+density*.035;
    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(amp,t+a);g.gain.exponentialRampToValueAtTime(.0001,t+a+d);
-   o.connect(f).connect(g);g.connect(master);g.connect(delay);o.start(t);o.stop(t+a+d+.2);
+   o.connect(f).connect(g);g.connect(spaceBus);g.connect(echoDelay);g.connect(hall);o.start(t);o.stop(t+a+d+.2);
  }
  ghostTimer=setTimeout(ghost,3000+rng()*(18000-density*9000)*(1-ent*.35));
 }
 function updateFX(){
- if(!ctx)return;let s=+space.value/100;
- delay.delayTime.setTargetAtTime(.18+s*.85,ctx.currentTime,.5);feedback.gain.setTargetAtTime(.12+s*.58,ctx.currentTime,.5);wet.gain.setTargetAtTime(.08+s*.48,ctx.currentTime,.5);
- master.gain.setTargetAtTime((+volume.value/100)*.55,ctx.currentTime,.1);
+ if(!ctx)return;
+ const s=+space.value/100;
+ const e=+echo.value/100;
+ const h=+hall.value/100;
+
+ // SPACE stays subtle: distance, softness, and common level.
+ spaceFilter.frequency.setTargetAtTime(6500-(s*4300),ctx.currentTime,.6);
+ spaceBus.gain.setTargetAtTime(.98-(s*.16),ctx.currentTime,.6);
+
+ // ECHO
+ echoDelay.delayTime.setTargetAtTime(.16+e*.72,ctx.currentTime,.35);
+ echoFeedback.gain.setTargetAtTime(.05+e*.62,ctx.currentTime,.35);
+ echoWet.gain.setTargetAtTime(e*.42,ctx.currentTime,.25);
+
+ // HALL
+ hallWet.gain.setTargetAtTime(h*.46,ctx.currentTime,.3);
+
+ // MASTER
+ master.gain.setTargetAtTime((+volume.value/100)*.58,ctx.currentTime,.1);
 }
 function tick(){
  let ent=+entropy.value/100;
@@ -186,7 +269,13 @@ function draw(ent){
  }
 }
 setInterval(tick,120);
-['space','volume'].forEach(id=>document.getElementById(id).oninput=e=>{document.getElementById(id+'V').textContent=e.target.value;updateFX()});
+['space','echo','hall','volume'].forEach(id=>{
+ document.getElementById(id).oninput=e=>{
+   const out=document.getElementById(id+'V');
+   if(out)out.textContent=e.target.value;
+   updateFX();
+ };
+});
 
 function setDiag(msg){
   const d=document.getElementById('diag');
