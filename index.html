@@ -33,34 +33,52 @@ header{
 h1{font-weight:400;font-size:15px;letter-spacing:.15em;margin:0}
 .micro{font-size:8px;color:var(--dim);letter-spacing:.09em;line-height:1.45}
 .status{
-  display:flex;align-items:center;justify-content:flex-end;gap:7px;
-  text-align:right;font-size:8px;color:var(--dim);white-space:nowrap;
+  display:flex;align-items:stretch;justify-content:flex-end;
+  text-align:right;color:var(--dim);white-space:nowrap;
 }
-.transport{display:flex;align-items:center;gap:6px}
+.transport{
+  display:flex;align-items:stretch;
+  border-left:1px solid var(--line);
+  border-right:1px solid var(--line);
+  min-height:38px;
+}
 .topStart,.reroll{
-  appearance:none;-webkit-appearance:none;background:transparent;color:var(--ink);
-  border:0;border-bottom:1px solid var(--line);padding:0 0 3px;margin:0;
-  font:8px "Courier New",monospace;letter-spacing:.10em;min-height:22px;
-  -webkit-tap-highlight-color:transparent;touch-action:manipulation;white-space:nowrap;
+  appearance:none;-webkit-appearance:none;
+  background:transparent;color:var(--ink);
+  border:0;border-right:1px solid var(--line);
+  padding:0 12px;margin:0;
+  font:10px "Courier New",monospace;
+  letter-spacing:.12em;
+  min-height:38px;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+  white-space:nowrap;
 }
-.topStart:active,.reroll:active{opacity:.55}
+.reroll{border-right:0}
+.topStart:active,.reroll:active{
+  background:rgba(242,238,220,.09);
+  opacity:.72;
+}
 .seedReadout{
-  font-size:6.5px;letter-spacing:.08em;color:var(--dim);
-  border-left:1px solid var(--faint);padding-left:6px;
+  display:flex;align-items:center;gap:4px;
+  font-size:6.2px;letter-spacing:.07em;color:var(--dim);
+  border-right:1px solid var(--line);
+  padding:0 8px;
 }
-.seedReadout b{font-weight:400;color:var(--ink);letter-spacing:.06em}
+.seedReadout b{
+  font-weight:400;color:var(--ink);letter-spacing:.05em;
+}
 .clockBox{
-  font-size:7px;letter-spacing:.08em;color:var(--dim);
-  border-left:1px solid var(--line);padding-left:7px;
+  display:flex;align-items:center;gap:4px;
+  font-size:6.2px;letter-spacing:.07em;color:var(--dim);
+  padding:0 0 0 8px;
 }
-.clockBox #clock{color:var(--ink);font-size:8px}
+.clockBox #clock{color:var(--ink);font-size:7.2px}
 @media(max-width:390px){
-  .status{gap:5px}
-  .transport{gap:5px}
-  .topStart,.reroll{font-size:7.2px}
-  .seedReadout{font-size:5.8px;padding-left:4px}
-  .clockBox{padding-left:5px;font-size:6px}
-  .clockBox #clock{font-size:7px}
+  .topStart,.reroll{font-size:9px;padding:0 9px;min-height:38px}
+  .seedReadout{font-size:5.4px;padding:0 6px}
+  .clockBox{font-size:5.4px;padding-left:6px}
+  .clockBox #clock{font-size:6.4px}
 }
 
 .main{
@@ -233,11 +251,11 @@ footer{
   </div>
   <div class="status">
     <div class="transport">
-      <button id="start" class="topStart">▶ START</button>
-      <button id="reroll" class="reroll" aria-label="Reroll seed">⚄ REROLL</button>
+      <span class="clockBox">TIME <span id="clock">00:00:00</span></span>
       <span class="seedReadout">SEED <b id="seedValue">--------</b></span>
+      <button id="reroll" class="reroll" aria-label="Reroll seed">⚄ REROLL</button>
+      <button id="start" class="topStart">▶ START</button>
     </div>
-    <span class="clockBox">TIME <span id="clock">00:00:00</span></span>
   </div>
 </header>
 
@@ -276,7 +294,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 1.9.0</span><span>HM-001</span></footer>
+  <footer><span>ver. 1.9.2</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -1163,3 +1181,16 @@ drawHamster(.43);
 </script>
 </body>
 </html>
+<style>
+.status .transport{border-left:1px solid var(--line);border-right:1px solid var(--line)}
+.status .clockBox,
+.status .seedReadout,
+.status .reroll,
+.status .topStart{
+  border-left:0 !important;
+  border-right:1px solid var(--line) !important;
+  padding-left:9px;
+  padding-right:9px;
+}
+.status .topStart{border-right:0 !important}
+</style>
