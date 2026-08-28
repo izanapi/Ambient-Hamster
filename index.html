@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#173d22">
-<title>AMBIENT GENERATOR MM-001</title>
+<title>HAMBIENT HM-001</title>
 <style>
 :root{
   --bg:#173f24;
@@ -169,7 +169,7 @@ footer{
 /* v1.6.0 generator rack */
 .left{
   display:grid !important;
-  grid-template-rows:repeat(4,minmax(0,1fr)) !important;
+  grid-template-rows:repeat(5,minmax(0,1fr)) !important;
   gap:0 !important;
   justify-content:stretch !important;
   align-content:stretch !important;
@@ -177,11 +177,11 @@ footer{
 .left .param{
   min-height:0 !important;
   height:auto !important;
-  padding:8px 8px 7px 2px !important;
+  padding:5px 8px 4px 2px !important;
   border-bottom:1px solid var(--line) !important;
   overflow:hidden !important;
   display:grid !important;
-  grid-template-rows:auto auto 24px auto !important;
+  grid-template-rows:auto auto 20px auto !important;
   align-content:center !important;
 }
 .left .param:first-child{border-top:1px solid var(--line) !important}
@@ -206,8 +206,8 @@ footer{
 <main id="app">
 <header>
   <div>
-    <h1>AMBIENT GENERATOR</h1>
-    <div class="micro">MM-001 / PROCEDURAL FIELD</div>
+    <h1>HAMBIENT</h1>
+    <div class="micro">HM-001 / PROCEDURAL FIELD</div>
   </div>
   <div class="status"><button id="start" class="topStart">▶ START</button><br><span id="clock">00:00:00</span></div>
 </header>
@@ -247,18 +247,19 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 1.6.0</span><span>MM-001</span></footer>
+  <footer><span>ver. 1.7.0</span><span>HM-001</span></footer>
 </section>
 </main>
 
 <script>
 const $=id=>document.getElementById(id);
-const defs=[['WAVE','tidal noise field',50],['DRONE','harmonic field',35],['GHOST','rare events',18],['PYRO','spark events',16]];
+const defs=[['TIDAL','tidal noise field',50],['DRONE','harmonic field',35],['GHOST','rare events',18],['PYRO','spark events',16],['HUM','mains resonance',12]];
 const metricDefs={
-  WAVE:[['SURGE',''],['FOAM','Hz'],['TIDE','s']],
+  TIDAL:[['SURGE',''],['FOAM','Hz'],['TIDE','s']],
   DRONE:[['ROOT','Hz'],['DETUNE','ct'],['DENS','']],
   GHOST:[['RATE','/m'],['DECAY','s'],['DEPTH','']],
-  PYRO:[['RATE','/s'],['BRIGHT','Hz'],['BURST','']]
+  PYRO:[['RATE','/s'],['BRIGHT','Hz'],['BURST','']],
+  HUM:[['MAINS','Hz'],['BUZZ',''],['DRIFT','ct']]
 };
 
 const holder=$('params');
@@ -284,10 +285,10 @@ let ctx=null, master=null, comp=null;
 let dryBus=null, spaceFilter=null;
 let echoDelay=null, echoFeedback=null, echoWet=null;
 let hall=null, hallWet=null;
-let airGain=null, droneGain=null, waveGain=null, waveFilter=null, waveLfo=null, waveLfoGain=null;
+let airGain=null, droneGain=null, waveGain=null, waveFilter=null, waveLfo=null, waveLfoGain=null, humGain=null, humOsc1=null, humOsc2=null, humLfo=null, humLfoGain=null;
 let started=false,startTime=0,timer=null,ghostTimer=null,crackleTimer=null;
 let seed=Math.floor(Math.random()*0xffffffff),phase=0,nodes=[];
-let vals={WAVE:50,DRONE:35,GHOST:18,PYRO:16,entropy:43};
+let vals={TIDAL:50,DRONE:35,GHOST:18,PYRO:16,HUM:12,entropy:43};
 
 function rng(){seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
 function noiseBuffer(sec=2){
@@ -364,6 +365,40 @@ function initAudio(){
     o.connect(g).connect(droneGain);
     o.start();nodes.push(o);
   });
+
+  // HUM: low mains-like electrical resonance + slight mechanical wobble
+  humGain=ctx.createGain();
+  humGain.gain.value=.012;
+  routeSource(humGain);
+
+  humOsc1=ctx.createOscillator();
+  humOsc1.type='sine';
+  humOsc1.frequency.value=50;
+
+  humOsc2=ctx.createOscillator();
+  humOsc2.type='triangle';
+  humOsc2.frequency.value=100;
+
+  const humG1=ctx.createGain();
+  humG1.gain.value=.72;
+  const humG2=ctx.createGain();
+  humG2.gain.value=.18;
+
+  humOsc1.connect(humG1).connect(humGain);
+  humOsc2.connect(humG2).connect(humGain);
+
+  humLfo=ctx.createOscillator();
+  humLfo.type='sine';
+  humLfo.frequency.value=.18;
+  humLfoGain=ctx.createGain();
+  humLfoGain.gain.value=.004;
+  humLfo.connect(humLfoGain).connect(humGain.gain);
+
+  humOsc1.start();
+  humOsc2.start();
+  humLfo.start();
+  nodes.push(humOsc1,humOsc2,humLfo);
+
   updateFX();
 }
 async function ensureAudio(){
@@ -500,7 +535,7 @@ function tick(){
 
     // Three small live parameters per generator.
     let m0,m1,m2;
-    if(n==='WAVE'){
+    if(n==='TIDAL'){
       m0=(0.25+vals[n]/100*1.35+(rng()-.5)*ent*.34).toFixed(3);
       m1=Math.round(1500+vals[n]*38+(rng()-.5)*ent*850);
       m2=(7.5-vals[n]/100*4.2+(rng()-.5)*ent*1.4).toFixed(2);
@@ -512,10 +547,14 @@ function tick(){
       m0=(0.4+vals[n]/100*5.8+(rng()-.5)*ent*.8).toFixed(2);
       m1=(5+vals[n]/100*16+(rng()-.5)*ent*4).toFixed(1);
       m2=(0.10+vals[n]/100*.82+(rng()-.5)*ent*.12).toFixed(3);
-    }else{ // PYRO
+    }else if(n==='PYRO'){
       m0=(0.25+vals[n]/100*7.0+(rng()-.5)*ent*1.1).toFixed(2);
       m1=Math.round(1800+vals[n]*42+(rng()-.5)*ent*900);
       m2=(1+Math.floor(vals[n]/28+rng()*(1+ent*3))).toFixed(0);
+    }else{ // HUM
+      m0=(49.7+vals[n]/100*.6+(rng()-.5)*ent*.35).toFixed(2);
+      m1=(0.12+vals[n]/100*.82+(rng()-.5)*ent*.12).toFixed(3);
+      m2=((rng()-.5)*(2.0+ent*14)).toFixed(1);
     }
 
     const values=[m0,m1,m2];
@@ -534,9 +573,9 @@ function tick(){
   $('entropyNow').textContent=vals.entropy.toFixed(4);
 
   if(ctx&&airGain&&droneGain){
-    const waveAmt=vals.WAVE/100;
+    const waveAmt=vals.TIDAL/100;
 
-    // WAVE gets more obviously surf-like as ENTROPY rises:
+    // TIDAL gets more obviously surf-like as ENTROPY rises:
     // stronger tidal pumping, brighter foam, less predictable motion.
     airGain.gain.setTargetAtTime(.010+waveAmt*.090,ctx.currentTime,1.1);
     if(waveGain){
@@ -557,11 +596,21 @@ function tick(){
     }
 
     droneGain.gain.setTargetAtTime(.003+vals.DRONE/100*.065,ctx.currentTime,1.95);
+
+    if(humGain&&humOsc1&&humOsc2){
+      const humAmt=vals.HUM/100;
+      humGain.gain.setTargetAtTime(.001+humAmt*.032,ctx.currentTime,.7);
+      const mains=49.85+humAmt*.35+(rng()-.5)*ent*.22;
+      humOsc1.frequency.setTargetAtTime(mains,ctx.currentTime,.9);
+      humOsc2.frequency.setTargetAtTime(mains*2+(rng()-.5)*ent*.6,ctx.currentTime,.9);
+      if(humLfo) humLfo.frequency.setTargetAtTime(.10+humAmt*.28+ent*.55,ctx.currentTime,.8);
+      if(humLfoGain) humLfoGain.gain.setTargetAtTime(.002+humAmt*.010+ent*.008,ctx.currentTime,.8);
+    }
   }
 
   if(ctx&&waveGain){
     const shimmer=(rng()-.5)*ent*.18;
-    waveGain.gain.setTargetAtTime(Math.max(.20,.60+vals.WAVE/100*.20+shimmer),ctx.currentTime,.35+(.8-ent*.5));
+    waveGain.gain.setTargetAtTime(Math.max(.20,.60+vals.TIDAL/100*.20+shimmer),ctx.currentTime,.35+(.8-ent*.5));
   }
   phase+=.009+ent*.034;
   drawHamster(ent);
@@ -779,48 +828,34 @@ function drawHamster(ent){
   const k1=Math.sin(t*speed);
   const k2=Math.sin(t*speed+Math.PI);
 
-  function paddle(x0,y0,kick,front,offset){
-    const swing=
-      kick*(14+ent*22) +
-      Math.sin(t*1.7+offset)*12*high +
-      (rng()-.5)*(18+36*extreme);
-
-    const lift=
-      Math.cos(t*(1.1+ent*3.1)+offset)*(8+ent*7);
-
+  // Straight rod limbs, no visible joints.
+  function rodLeg(x0,y0,kick,offset,len=24){
+    const ang =
+      kick*(.48+ent*.65) +
+      Math.sin(t*.9+offset)*.18 +
+      (rng()-.5)*.72*extreme;
+    const L=len + (rng()-.5)*12*extreme;
+    const x1=x0 + Math.cos(ang)*L;
+    const y1=y0 + Math.sin(ang)*L;
     x.beginPath();
-    x.moveTo(x0+j()*.16,y0+j()*.16);
-    x.lineTo(
-      x0+swing*.45,
-      y0+10+lift+j()*.14
-    );
-    x.lineTo(
-      x0+swing,
-      y0+18+lift+(rng()-.5)*(12+25*extreme)
-    );
-    if(front)x.lineTo(
-      x0+swing+7+(rng()-.5)*10*extreme,
-      y0+17+lift
-    );
+    x.moveTo(x0+j()*.10,y0+j()*.10);
+    x.lineTo(x1+j()*.10,y1+j()*.10);
     x.stroke();
   }
 
   x.strokeStyle='rgba(242,238,220,.80)';
-  paddle(-27,18,k1,false,.1);
-  paddle(-6,24,k2,false,1.2);
-  paddle(22,22,k1,true,2.3);
-  paddle(44,15,k2,true,3.0);
+  rodLeg(-27,18,k1,.1,22);
+  rodLeg(-6,24,k2,1.2,24);
+  rodLeg(22,22,k1,2.3,25);
+  rodLeg(44,15,k2,3.0,23);
 
-  const paw=Math.sin(t*(2.0+ent*4.2))*(10+ent*11);
+  const pawAng=Math.sin(t*(2.0+ent*4.2))*(.45+ent*.55);
+  const pawLen=18+(rng()-.5)*12*extreme;
   x.beginPath();
-  x.moveTo(-18+j()*.1,0+j()*.1);
+  x.moveTo(-18+j()*.08,0+j()*.08);
   x.lineTo(
-    -6+paw,
-    9+(rng()-.5)*(8+18*extreme)
-  );
-  x.lineTo(
-    -1+paw,
-    5+(rng()-.5)*(8+18*extreme)
+    -18 + Math.cos(pawAng)*pawLen,
+    0 + Math.sin(pawAng)*pawLen
   );
   x.stroke();
 
