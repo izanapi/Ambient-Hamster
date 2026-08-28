@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.3.1</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.3.2</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -432,11 +432,21 @@ function initAudio(){
   if(!AC)throw new Error('WEB AUDIO UNAVAILABLE');
   ctx=new AC();
 
+  // MASTER loudness stage followed by a gentle peak safety limiter.
+  // This gives roughly +6 dB more useful output than the previous build,
+  // while catching unusually hot REROLL / FX combinations before the device output.
   master=ctx.createGain();
-  master.gain.value=.45;
+  master.gain.value=.90;
+
   comp=ctx.createDynamicsCompressor();
-  comp.threshold.value=-12;comp.ratio.value=5;comp.attack.value=.01;comp.release.value=.25;
-  comp.connect(master);master.connect(ctx.destination);
+  comp.threshold.value=-4.5;
+  comp.knee.value=3.0;
+  comp.ratio.value=14;
+  comp.attack.value=.003;
+  comp.release.value=.18;
+
+  master.connect(comp);
+  comp.connect(ctx.destination);
 
   // Source-input gates. STOP closes these, but leaves effect outputs alive
   // so echo and hall tails can decay naturally.
@@ -466,14 +476,14 @@ function initAudio(){
 
   // SPACE: distance + stereo drift + early reflections
   spacePan=ctx.createStereoPanner();
-  dryBus.connect(spaceFilter).connect(spacePan).connect(comp);
+  dryBus.connect(spaceFilter).connect(spacePan).connect(master);
 
   spaceEarly=ctx.createDelay(0.25);
   spaceEarlyTap2=ctx.createDelay(0.35);
   spaceEarlyGain=ctx.createGain();
   spaceEarlyGain2=ctx.createGain();
-  dryBus.connect(spaceEarly).connect(spaceEarlyGain).connect(comp);
-  dryBus.connect(spaceEarlyTap2).connect(spaceEarlyGain2).connect(comp);
+  dryBus.connect(spaceEarly).connect(spaceEarlyGain).connect(master);
+  dryBus.connect(spaceEarlyTap2).connect(spaceEarlyGain2).connect(master);
 
   echoDelay=ctx.createDelay(2.5);
   echoInput.connect(echoTone).connect(echoDelay);
@@ -482,14 +492,14 @@ function initAudio(){
   echoDelay.connect(echoFeedback);
   echoFeedback.connect(echoDelay);
   echoDelay.connect(echoWet);
-  echoWet.connect(comp);
+  echoWet.connect(master);
 
   hall=ctx.createConvolver();
   hallInput.connect(hallTone).connect(hall);
   hall.buffer=makeHallIR();
   hallWet=ctx.createGain();
   hall.connect(hallWet);
-  hallWet.connect(comp);
+  hallWet.connect(master);
 
   // TIDAL: filtered broadband surf with a slow amplitude tide.
   const src=ctx.createBufferSource();
@@ -664,7 +674,7 @@ function updateFX(){
   const hc=Math.pow(h,.74);
   hallWet.gain.setTargetAtTime(hc*1.42+d*.78,ctx.currentTime,.18);
 
-  master.gain.setTargetAtTime(v*.60,ctx.currentTime,.10);
+  master.gain.setTargetAtTime(v*1.20,ctx.currentTime,.10);
 }
 
 function fireCrackle(){
