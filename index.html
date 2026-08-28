@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.2.8</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.2.9</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -629,64 +629,104 @@ function fireCrackle(){
   const amt=+$('PYRO').value/100;
   const ent=+$('entropy').value/100;
 
-  // At low values: sparse ticks. At high values: clusters and little bursts.
-  const baseWait=180+Math.pow(1-amt,1.7)*1600;
-  const wait=baseWait*(.55+rng()*.95)*(1-ent*.18);
+  // PYRO = fire activity, not merely loudness.
+  // Zero is truly silent. Higher values shorten the gap dramatically.
+  if(amt<=.001){
+    crackleTimer=setTimeout(fireCrackle,260);
+    return;
+  }
+
+  const density=Math.pow(amt,.72);
+  const maxRush=Math.pow(Math.max(0,(amt-.72)/.28),1.65);
+
+  // Approximate feel:
+  // low:    ...pat..........pat...
+  // middle: pat...pachi..pat......
+  // max:    pachipachichipachi...
+  const minGap=18;
+  const baseGap=1450*Math.pow(1-density,2.05)+38;
+  const wait=Math.max(minGap,baseGap*(.46+rng()*.92)*(1-ent*.16)*(1-maxRush*.48));
 
   crackleTimer=setTimeout(()=>{
-    if(started&&ctx&&ctx.state==='running'&&rng() < .28+amt*.72){
-      const now=ctx.currentTime;
-      const cluster=1 + (rng()<amt*.42 ? 1+Math.floor(rng()*3) : 0);
-
-      for(let k=0;k<cluster;k++){
-        const dur=.012+rng()*.075;
-        const b=ctx.createBuffer(1,Math.max(8,Math.floor(ctx.sampleRate*dur)),ctx.sampleRate);
-        const d=b.getChannelData(0);
-
-        // Very short decaying noise burst, biased toward sharp initial transients.
-        for(let i=0;i<d.length;i++){
-          const p=i/d.length;
-          const env=Math.pow(1-p,2.6);
-          const grit=(rng()*2-1);
-          d[i]=grit*env;
-        }
-
-        const s=ctx.createBufferSource();
-        s.buffer=b;
-
-        const hp=ctx.createBiquadFilter();
-        hp.type='highpass';
-        hp.frequency.value=1800+rng()*2200;
-        hp.Q.value=.25+rng()*.8;
-
-        const bp=ctx.createBiquadFilter();
-        bp.type='bandpass';
-        bp.frequency.value=2800+rng()*5200;
-        bp.Q.value=.7+rng()*2.8;
-
-        const g=ctx.createGain();
-        const level=Math.max(.003,.038+amt*.025+rng()*.032+(rng()-.5)*collapse*.13);
-        const t=now+k*(.018+rng()*.055);
-
-        g.gain.setValueAtTime(.0001,t);
-        g.gain.exponentialRampToValueAtTime(level,t+.002);
-        g.gain.exponentialRampToValueAtTime(.0001,t+dur);
-
-        s.connect(hp).connect(bp).connect(g);
-
-        // Mostly dry/nearby, with smaller sends into the shared space.
-        g.connect(dryInput);
-        const echoSend=ctx.createGain();
-        echoSend.gain.value=.12;
-        const hallSend=ctx.createGain();
-        hallSend.gain.value=.08;
-        g.connect(echoSend).connect(echoInput);
-        g.connect(hallSend).connect(hallInput);
-
-        s.start(t);
-        s.stop(t+dur+.02);
-      }
+    if(!started||!ctx||ctx.state!=='running'){
+      fireCrackle();
+      return;
     }
+
+    // Read the current slider again so dropping PYRO to zero stops immediately.
+    const liveAmt=+$('PYRO').value/100;
+    if(liveAmt<=.001){
+      fireCrackle();
+      return;
+    }
+
+    const liveEnt=+$('entropy').value/100;
+    const liveDensity=Math.pow(liveAmt,.72);
+    const liveRush=Math.pow(Math.max(0,(liveAmt-.72)/.28),1.55);
+    const now=ctx.currentTime;
+
+    // Campfire-like small groups: single "pachi", occasional "pachichi".
+    let cluster=1;
+    if(rng()<.12+liveDensity*.58) cluster++;
+    if(rng()<liveDensity*.34+liveRush*.30) cluster++;
+    if(rng()<liveRush*.52) cluster+=1+Math.floor(rng()*3);
+
+    for(let k=0;k<cluster;k++){
+      const dur=.018+rng()*(.055+liveDensity*.050);
+      const b=ctx.createBuffer(1,Math.max(16,Math.floor(ctx.sampleRate*dur)),ctx.sampleRate);
+      const d=b.getChannelData(0);
+
+      // Crack with several tiny internal impulses, giving "pachi" instead of a thin click.
+      const sparks=1+Math.floor(rng()*(2+liveDensity*5+liveRush*7));
+      for(let sidx=0;sidx<sparks;sidx++){
+        const pos=Math.floor(rng()*Math.max(1,d.length-12));
+        const len=Math.min(d.length-pos,8+Math.floor(rng()*70));
+        const amp=.35+rng()*.75;
+        for(let i=0;i<len;i++){
+          const p=i/len;
+          d[pos+i]+=(rng()*2-1)*amp*Math.pow(1-p,2.25);
+        }
+      }
+
+      const s=ctx.createBufferSource();
+      s.buffer=b;
+
+      // Wider than before: still a crackle, but no longer an inaudibly thin ultrasonic tick.
+      const hp=ctx.createBiquadFilter();
+      hp.type='highpass';
+      hp.frequency.value=850+rng()*1250;
+      hp.Q.value=.18+rng()*.50;
+
+      const peak=ctx.createBiquadFilter();
+      peak.type='peaking';
+      peak.frequency.value=1800+rng()*3600;
+      peak.Q.value=.45+rng()*1.25;
+      peak.gain.value=2+rng()*5;
+
+      const g=ctx.createGain();
+      // Presence rises modestly, while density does most of the work.
+      const level=.050+liveDensity*.040+liveRush*.025+rng()*.030;
+      const t=now+k*(.009+rng()*(.030-liveRush*.014));
+
+      g.gain.setValueAtTime(.0001,t);
+      g.gain.exponentialRampToValueAtTime(level,t+.0015);
+      g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+
+      s.connect(hp).connect(peak).connect(g);
+
+      // Keep PYRO close and present; room sends remain secondary.
+      g.connect(dryInput);
+      const echoSend=ctx.createGain();
+      echoSend.gain.value=.10;
+      const hallSend=ctx.createGain();
+      hallSend.gain.value=.065;
+      g.connect(echoSend).connect(echoInput);
+      g.connect(hallSend).connect(hallInput);
+
+      s.start(t);
+      s.stop(t+dur+.025);
+    }
+
     fireCrackle();
   },wait);
 }
@@ -736,7 +776,7 @@ function tick(){
       m1=Math.round(1500+vals[n]*38+(rng()-.5)*ent*850);
       m2=(7.5-vals[n]/100*4.2+(rng()-.5)*ent*1.4).toFixed(2);
     }else if(n==='DRONE'){
-      m0=(72.5+vals[n]*.018+(rng()-.5)*ent*.35).toFixed(2);
+      m0=(0.15+Math.pow(vals[n]/100,.72)*22+Math.pow(Math.max(0,(vals[n]/100-.72)/.28),1.55)*55+(rng()-.5)*ent*2.5).toFixed(2);
       m1=((rng()-.5)*(3+ent*21)).toFixed(1);
       m2=(0.20+vals[n]/100*.68+(rng()-.5)*ent*.10).toFixed(3);
     }else if(n==='GHOST'){
