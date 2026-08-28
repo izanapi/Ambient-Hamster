@@ -46,19 +46,19 @@ h1{font-weight:400;font-size:15px;letter-spacing:.15em;margin:0}
   min-height:0;flex:1;padding-top:10px;
 }
 .left{
-  display:flex;flex-direction:column;justify-content:space-evenly;
+  display:flex;flex-direction:column;justify-content:space-between;
   border-right:1px solid var(--line);padding-right:12px;min-height:0;
 }
-.param{min-height:0}
+.param{min-height:0;padding:3px 0 5px}
 .param input[type=range], .spaceRow input[type=range], .fx input[type=range], .entSlider{
-  padding:10px 0;
-  margin:-10px 0;
+  padding:12px 0;
+  margin:-12px 0;
   box-sizing:content-box;
 }
-.ph{display:flex;justify-content:space-between;align-items:end;margin-bottom:3px}
-.pname{font-size:14px;letter-spacing:.14em}
-.pval{font-size:15px;font-variant-numeric:tabular-nums}
-.desc{font-size:7px;color:var(--dim);letter-spacing:.05em;margin-bottom:4px}
+.ph{display:flex;justify-content:space-between;align-items:end;margin-bottom:1px}
+.pname{font-size:10px;letter-spacing:.14em}
+.pval{font-size:10px;font-variant-numeric:tabular-nums}
+.desc{font-size:5.4px;color:var(--dim);letter-spacing:.05em;margin-bottom:2px}
 .hist{height:31px;overflow:hidden;white-space:normal;font-size:6.2px;line-height:1.35;color:var(--dim);margin-top:5px;word-spacing:4px}
 
 /* thin instrument slider */
@@ -166,7 +166,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 1.5.2</span><span>MM-001</span></footer>
+  <footer><span>ver. 1.5.3</span><span>MM-001</span></footer>
 </section>
 </main>
 
@@ -410,7 +410,7 @@ function tick(){
 
   defs.forEach(([n])=>{
     const set=+$(n).value;
-    const jitter=.028+Math.pow(ent,1.5)*1.15;
+    const jitter=.035+Math.pow(ent,1.5)*1.35;
     const pull=.026-ent*.009;
 
     vals[n]+=(set-vals[n])*pull+(rng()-.5)*jitter;
@@ -461,7 +461,7 @@ function tick(){
   phase+=.0075+ent*.020;
   drawHamster(ent);
 }
-setInterval(tick,120);
+setInterval(tick,70);
 
 function drawHamster(ent){
   const c=$('core'),x=c.getContext('2d'),w=c.width,h=c.height;
@@ -536,6 +536,53 @@ function drawHamster(ent){
   }
   x.restore();
 }
+
+
+function installWideRangeControl(el){
+  if(!el)return;
+
+  const setFromClientX=(clientX)=>{
+    const rect=el.getBoundingClientRect();
+    const min=parseFloat(el.min||0);
+    const max=parseFloat(el.max||100);
+    let p=(clientX-rect.left)/rect.width;
+    p=Math.max(0,Math.min(1,p));
+    const step=parseFloat(el.step||1);
+    let value=min+p*(max-min);
+    if(step>0)value=Math.round(value/step)*step;
+    el.value=Math.max(min,Math.min(max,value));
+    el.dispatchEvent(new Event('input',{bubbles:true}));
+  };
+
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    setFromClientX(e.clientX);
+    try{el.setPointerCapture(e.pointerId)}catch(_){}
+  });
+
+  el.addEventListener('pointermove',e=>{
+    if(e.buttons===1 || (e.pointerType==='touch' && el.hasPointerCapture?.(e.pointerId))){
+      e.preventDefault();
+      setFromClientX(e.clientX);
+    }
+  });
+
+  // iOS fallback
+  el.addEventListener('touchstart',e=>{
+    if(e.touches&&e.touches[0]){
+      e.preventDefault();
+      setFromClientX(e.touches[0].clientX);
+    }
+  },{passive:false});
+
+  el.addEventListener('touchmove',e=>{
+    if(e.touches&&e.touches[0]){
+      e.preventDefault();
+      setFromClientX(e.touches[0].clientX);
+    }
+  },{passive:false});
+}
+document.querySelectorAll('input[type="range"]').forEach(installWideRangeControl);
 
 ['space','echo','hall','volume'].forEach(id=>{
   $(id).addEventListener('input',e=>{
