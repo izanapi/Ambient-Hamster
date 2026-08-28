@@ -164,6 +164,43 @@ footer{
 .left .desc{margin-bottom:1px !important}
 </style>
 
+
+<style>
+/* v1.6.0 generator rack */
+.left{
+  display:grid !important;
+  grid-template-rows:repeat(4,minmax(0,1fr)) !important;
+  gap:0 !important;
+  justify-content:stretch !important;
+  align-content:stretch !important;
+}
+.left .param{
+  min-height:0 !important;
+  height:auto !important;
+  padding:8px 8px 7px 2px !important;
+  border-bottom:1px solid var(--line) !important;
+  overflow:hidden !important;
+  display:grid !important;
+  grid-template-rows:auto auto 24px auto !important;
+  align-content:center !important;
+}
+.left .param:first-child{border-top:1px solid var(--line) !important}
+.left .ph{margin:0 0 1px !important}
+.left .pname{font-size:9px !important}
+.left .pval{font-size:9px !important}
+.left .desc{font-size:4.6px !important;margin:0 0 1px !important}
+.left .metrics{
+  height:13px !important;
+  margin-top:1px !important;
+}
+.left .metric{height:12px !important}
+.left .metric .mk{font-size:3px !important}
+.left .metric .mv{font-size:3.3px !important}
+.left .param input[type=range]{
+  align-self:center !important;
+}
+</style>
+
 </head>
 <body>
 <main id="app">
@@ -210,15 +247,15 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 1.5.5</span><span>MM-001</span></footer>
+  <footer><span>ver. 1.6.0</span><span>MM-001</span></footer>
 </section>
 </main>
 
 <script>
 const $=id=>document.getElementById(id);
-const defs=[['AIR','atmospheric bed',50],['DRONE','harmonic field',35],['GHOST','rare events',18],['PYRO','spark events',16]];
+const defs=[['WAVE','tidal noise field',50],['DRONE','harmonic field',35],['GHOST','rare events',18],['PYRO','spark events',16]];
 const metricDefs={
-  AIR:[['FLUX',''],['BAND','Hz'],['DRIFT','']],
+  WAVE:[['SURGE',''],['FOAM','Hz'],['TIDE','s']],
   DRONE:[['ROOT','Hz'],['DETUNE','ct'],['DENS','']],
   GHOST:[['RATE','/m'],['DECAY','s'],['DEPTH','']],
   PYRO:[['RATE','/s'],['BRIGHT','Hz'],['BURST','']]
@@ -247,10 +284,10 @@ let ctx=null, master=null, comp=null;
 let dryBus=null, spaceFilter=null;
 let echoDelay=null, echoFeedback=null, echoWet=null;
 let hall=null, hallWet=null;
-let airGain=null, droneGain=null;
+let airGain=null, droneGain=null, waveGain=null, waveFilter=null, waveLfo=null, waveLfoGain=null;
 let started=false,startTime=0,timer=null,ghostTimer=null,crackleTimer=null;
 let seed=Math.floor(Math.random()*0xffffffff),phase=0,nodes=[];
-let vals={AIR:50,DRONE:35,GHOST:18,PYRO:16,entropy:43};
+let vals={WAVE:50,DRONE:35,GHOST:18,PYRO:16,entropy:43};
 
 function rng(){seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
 function noiseBuffer(sec=2){
@@ -463,10 +500,10 @@ function tick(){
 
     // Three small live parameters per generator.
     let m0,m1,m2;
-    if(n==='AIR'){
-      m0=(0.15+vals[n]/100*.78+(rng()-.5)*ent*.16).toFixed(3);
-      m1=Math.round(420+vals[n]*29+(rng()-.5)*ent*420);
-      m2=((rng()-.5)*(0.08+ent*.72)).toFixed(3);
+    if(n==='WAVE'){
+      m0=(0.25+vals[n]/100*1.35+(rng()-.5)*ent*.34).toFixed(3);
+      m1=Math.round(1500+vals[n]*38+(rng()-.5)*ent*850);
+      m2=(7.5-vals[n]/100*4.2+(rng()-.5)*ent*1.4).toFixed(2);
     }else if(n==='DRONE'){
       m0=(72.5+vals[n]*.018+(rng()-.5)*ent*.35).toFixed(2);
       m1=((rng()-.5)*(3+ent*21)).toFixed(1);
@@ -497,11 +534,35 @@ function tick(){
   $('entropyNow').textContent=vals.entropy.toFixed(4);
 
   if(ctx&&airGain&&droneGain){
-    airGain.gain.setTargetAtTime(.006+vals.AIR/100*.105,ctx.currentTime,1.45);
+    const waveAmt=vals.WAVE/100;
+
+    // WAVE gets more obviously surf-like as ENTROPY rises:
+    // stronger tidal pumping, brighter foam, less predictable motion.
+    airGain.gain.setTargetAtTime(.010+waveAmt*.090,ctx.currentTime,1.1);
+    if(waveGain){
+      const base=.56+waveAmt*.20;
+      waveGain.gain.setTargetAtTime(base,ctx.currentTime,.8);
+    }
+    if(waveLfo){
+      const rate=.055+waveAmt*.055+ent*.16;
+      waveLfo.frequency.setTargetAtTime(rate,ctx.currentTime,.7);
+    }
+    if(waveLfoGain){
+      waveLfoGain.gain.setTargetAtTime(.16+waveAmt*.20+ent*.38,ctx.currentTime,.7);
+    }
+    if(waveFilter){
+      const centre=430+waveAmt*1050+(rng()-.5)*ent*550;
+      waveFilter.frequency.setTargetAtTime(Math.max(180,centre),ctx.currentTime,.85);
+      waveFilter.Q.setTargetAtTime(.30+ent*.42,ctx.currentTime,.9);
+    }
+
     droneGain.gain.setTargetAtTime(.003+vals.DRONE/100*.065,ctx.currentTime,1.95);
-    if(nodes[1])nodes[1].frequency.setTargetAtTime(320+vals.AIR*23,ctx.currentTime,2.25);
   }
 
+  if(ctx&&waveGain){
+    const shimmer=(rng()-.5)*ent*.18;
+    waveGain.gain.setTargetAtTime(Math.max(.20,.60+vals.WAVE/100*.20+shimmer),ctx.currentTime,.35+(.8-ent*.5));
+  }
   phase+=.009+ent*.034;
   drawHamster(ent);
 }
