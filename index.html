@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.2.3</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.2.4</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -1072,16 +1072,6 @@ function drawHamster(ent){
   rodLeg(-6,24,k2,1.2,24);
   rodLeg(22,22,k1,2.3,25);
   rodLeg(44,15,k2,3.0,23);
-
-  const pawAng=Math.sin(t*(2.0+ent*4.2))*(.45+ent*.55);
-  const pawLen=18+(rng()-.5)*12*extreme;
-  x.beginPath();
-  x.moveTo(-18+j()*.08,0+j()*.08);
-  x.lineTo(
-    -18 + Math.cos(pawAng)*pawLen,
-    0 + Math.sin(pawAng)*pawLen
-  );
-  x.stroke();
 
   // =========================================================
   // BODY WIREFRAME: starts coherent, breaks apart with entropy
