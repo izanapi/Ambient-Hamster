@@ -276,7 +276,7 @@ footer{
   <div class="spaceRow">
     <label>DISTANCE</label>
     <input id="distance" type="range" min="0" max="100" value="72">
-    <span class="num" id="spaceV">72</span>
+    <span class="num" id="distanceV">72</span>
   </div>
 
   <div class="fx">
@@ -294,7 +294,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.1.0</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.1.1</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -740,7 +740,7 @@ function tick(){
   const eJitter=.04+Math.pow(ent,1.55)*1.25;
   vals.entropy+=(+$('entropy').value-vals.entropy)*(.028-ent*.008)+(rng()-.5)*eJitter;
   vals.entropy=Math.max(0,Math.min(100,vals.entropy));
-  $('entropyNow').textContent=vals.entropy.toFixed(4);
+  $('entropyNow').textContent=Math.min(.999999,Math.max(0,vals.entropy/100)).toFixed(6);
 
   if(ctx&&airGain&&droneGain){
     const waveAmt=vals.TIDAL/100;
@@ -1180,15 +1180,21 @@ document.querySelectorAll('input[type="range"]').forEach(installWideRangeControl
 
 ['distance','echo','hall','volume'].forEach(id=>{
   $(id).addEventListener('input',e=>{
-    $(id+'V').textContent=e.target.value;
+    const readout=$(id+'V');
+    if(readout) readout.textContent=e.target.value;
     updateFX();
   });
+});
+
+$('entropy').addEventListener('input',e=>{
+  const normalized=Math.min(.999999,+e.target.value/100);
+  $('entropyNow').textContent=normalized.toFixed(6);
 });
 
 $('reroll').addEventListener('click',rerollSeed);
 showSeed();
 const entropyReadout=$('entropyNow');
-if(entropyReadout) entropyReadout.textContent=(+$('entropy').value/100).toFixed(6);
+if(entropyReadout) entropyReadout.textContent=Math.min(.999999,+$('entropy').value/100).toFixed(6);
 
 
 $('start').addEventListener('click',async()=>{
