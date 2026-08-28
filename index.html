@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.2.4</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.2.5</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -366,6 +366,17 @@ function rerollSeed(){
       el.dispatchEvent(new Event('input',{bubbles:true}));
     }
   });
+
+  // ENTROPY is part of the reroll too.
+  // Full 0-100 range means the hamster can jump from calm to catastrophic.
+  const entEl=$('entropy');
+  if(entEl){
+    const ev=Math.round(rng()*100);
+    entEl.value=ev;
+    vals.entropy=ev;
+    $('entropyNow').textContent=Math.min(.999999,ev/100).toFixed(6);
+    entEl.dispatchEvent(new Event('input',{bubbles:true}));
+  }
 
   // Re-seed continuous random textures while running.
   if(ctx){
