@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.3.0</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.3.1</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -352,19 +352,39 @@ function rerollSeed(){
   showSeed();
 
   // REROLL now changes the actual generator controls.
+  // Generator parameters glide to their newly rolled destinations.
+  // The visible controls and their audio targets travel together, avoiding abrupt jumps.
   defs.forEach(([n])=>{
-    // Keep a small floor so every reroll tends to produce an audible machine.
-    let v=Math.round(5+rng()*90);
-    // TIDAL is intentionally a little more restrained because it dominates easily.
-    if(n==='TIDAL') v=Math.round(2+rng()*38);
+    let target=Math.round(5+rng()*90);
+    if(n==='TIDAL') target=Math.round(2+rng()*38);
+
     const el=$(n);
-    if(el){
+    if(!el)return;
+
+    const start=+el.value;
+    const duration=1400+rng()*900; // each machine drifts for roughly 1.4–2.3 s
+    const t0=performance.now();
+
+    const glide=(now)=>{
+      const p=Math.min(1,(now-t0)/duration);
+      // smoothstep: gentle departure and arrival
+      const ease=p*p*(3-2*p);
+      const v=start+(target-start)*ease;
+
       el.value=v;
       vals[n]=v;
-      const now=$(n+'Now');
-      if(now) now.textContent=v.toFixed(4);
-      el.dispatchEvent(new Event('input',{bubbles:true}));
-    }
+      const readout=$(n+'Now');
+      if(readout) readout.textContent=v.toFixed(4);
+
+      if(p<1){
+        requestAnimationFrame(glide);
+      }else{
+        el.value=target;
+        vals[n]=target;
+        if(readout) readout.textContent=target.toFixed(4);
+      }
+    };
+    requestAnimationFrame(glide);
   });
 
   // ENTROPY is part of the reroll too.
