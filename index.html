@@ -294,7 +294,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.1.1</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.2.0</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -357,7 +357,7 @@ function rerollSeed(){
     // Keep a small floor so every reroll tends to produce an audible machine.
     let v=Math.round(5+rng()*90);
     // TIDAL is intentionally a little more restrained because it dominates easily.
-    if(n==='TIDAL') v=Math.round(3+rng()*57);
+    if(n==='TIDAL') v=Math.round(2+rng()*38);
     const el=$(n);
     if(el){
       el.value=v;
@@ -527,12 +527,13 @@ function scheduleHumDrop(){
 
   const amt=+$('HUM').value/100;
   const ent=+$('entropy').value/100;
-  const wait=2200+rng()*(9000-amt*4200-ent*2200);
+  const collapse=Math.pow(Math.max(0,(ent-.62)/.38),2.1);
+  const wait=1200+rng()*Math.max(650,7600-amt*3500-ent*2600-collapse*4300);
 
   humDropTimer=setTimeout(()=>{
-    if(started&&ctx.state==='running'&&amt>.03&&rng()<.18+amt*.45+ent*.25){
+    if(started&&ctx.state==='running'&&amt>.03&&rng()<Math.min(.94,.16+amt*.42+ent*.28+collapse*.52)){
       const t=ctx.currentTime;
-      const dip=.025+rng()*.11;
+      const dip=.020+rng()*(.10+collapse*.33);
       humCut.gain.cancelScheduledValues(t);
       humCut.gain.setValueAtTime(Math.max(.0001,humCut.gain.value),t);
       humCut.gain.exponentialRampToValueAtTime(.0002,t+.004);
@@ -640,7 +641,7 @@ function fireCrackle(){
         bp.Q.value=.7+rng()*2.8;
 
         const g=ctx.createGain();
-        const level=.025+amt*.105+rng()*.042;
+        const level=Math.max(.003,.025+amt*.105+rng()*.042+(rng()-.5)*collapse*.13);
         const t=now+k*(.018+rng()*.055);
 
         g.gain.setValueAtTime(.0001,t);
@@ -747,45 +748,80 @@ function tick(){
     const loud=Math.min(1,waveAmt*2); // 50 = previous max loudness
 
     // Above 50, loudness stops increasing. Only surf character intensifies.
-    airGain.gain.setTargetAtTime(.006+loud*.074,ctx.currentTime,1.1);
+    airGain.gain.setTargetAtTime(.002+loud*.026,ctx.currentTime,1.1);
 
     if(waveGain){
-      const base=.48+loud*.18;
+      const base=.34+loud*.10;
       waveGain.gain.setTargetAtTime(base,ctx.currentTime,.75);
     }
     if(waveLfo){
-      const rate=.050+waveAmt*.075+ent*.19;
+      const rate=.045+waveAmt*.075+ent*.28+collapse*1.15;
       waveLfo.frequency.setTargetAtTime(rate,ctx.currentTime,.65);
     }
     if(waveLfoGain){
-      const agitation=.14+waveAmt*.30+ent*.42;
+      const agitation=.10+waveAmt*.28+ent*.48+collapse*.95;
       waveLfoGain.gain.setTargetAtTime(agitation,ctx.currentTime,.65);
     }
     if(waveFilter){
-      const centre=380+waveAmt*1320+(rng()-.5)*ent*720;
+      const centre=360+waveAmt*1220+(rng()-.5)*(ent*900+collapse*4200);
       waveFilter.frequency.setTargetAtTime(Math.max(160,centre),ctx.currentTime,.75);
-      waveFilter.Q.setTargetAtTime(.28+waveAmt*.18+ent*.48,ctx.currentTime,.8);
+      waveFilter.Q.setTargetAtTime(.24+waveAmt*.18+ent*.58+collapse*4.2,ctx.currentTime,.35);
     }
 
-    droneGain.gain.setTargetAtTime(.006+vals.DRONE/100*.120,ctx.currentTime,1.35);
+    droneGain.gain.setTargetAtTime(
+      Math.max(.001,.006+vals.DRONE/100*.120 + (rng()-.5)*collapse*.11),
+      ctx.currentTime,.22+(.8-ent*.6)
+    );
+
+    // At high entropy the harmonic field loses tuning coherence.
+    if(nodes&&collapse>0){
+      nodes.forEach(n=>{
+        if(n&&n.frequency&&typeof n.frequency.setTargetAtTime==='function'){
+          const base=n.frequency.value||80;
+          const ratio=1+(rng()-.5)*(ent*.004+collapse*.16);
+          if(base>30&&base<2000){
+            n.frequency.setTargetAtTime(Math.max(18,base*ratio),ctx.currentTime,.18);
+          }
+        }
+      });
+    }
 
     if(humGain&&humOsc1&&humOsc2){
       const humAmt=vals.HUM/100;
       humGain.gain.setTargetAtTime(humAmt*.105,ctx.currentTime,.35);
-      const mains=49.85+(rng()-.5)*ent*.18;
+      const mains=49.85+(rng()-.5)*(ent*.28+collapse*9.0);
       humOsc1.frequency.setTargetAtTime(mains,ctx.currentTime,.9);
-      humOsc2.frequency.setTargetAtTime(mains*2+(rng()-.5)*ent*.6,ctx.currentTime,.9);
-      if(humLfo) humLfo.frequency.setTargetAtTime(.10+humAmt*.28+ent*.55,ctx.currentTime,.8);
-      if(humLfoGain) humLfoGain.gain.setTargetAtTime(.002+humAmt*.010+ent*.008,ctx.currentTime,.8);
+      humOsc2.frequency.setTargetAtTime(Math.max(25,mains*2+(rng()-.5)*(ent*.9+collapse*26)),ctx.currentTime,.20+(.7-collapse*.5));
+      if(humLfo) humLfo.frequency.setTargetAtTime(.10+humAmt*.28+ent*.70+collapse*7.5,ctx.currentTime,.28);
+      if(humLfoGain) humLfoGain.gain.setTargetAtTime(.002+humAmt*.010+ent*.010+collapse*.055,ctx.currentTime,.24);
     }
   }
 
   if(ctx&&spacePan){
     const s=+$('distance').value/100;
     const d=Math.pow(s,1.08);
-    const pan=Math.sin(phase*.37)*d*.82 + Math.sin(phase*.11)*d*.16;
-    spacePan.pan.setTargetAtTime(pan,ctx.currentTime,.55);
+    const pan=Math.sin(phase*.37)*d*.82 + Math.sin(phase*.11)*d*.16
+      +(rng()-.5)*collapse*.95;
+    spacePan.pan.setTargetAtTime(Math.max(-1,Math.min(1,pan)),ctx.currentTime,.12+(.45-collapse*.3));
   }
+
+  // Near maximum entropy, the whole source field begins to tear apart.
+  // FX outputs are not gated, so echoes/reverb smear the collapse.
+  if(ctx&&started&&collapse>.015&&dryInput&&echoInput&&hallInput){
+    const t=ctx.currentTime;
+    const tearChance=.04+collapse*.52;
+    if(rng()<tearChance){
+      const keep=Math.max(.025,1-collapse*(.45+rng()*.52));
+      [dryInput,echoInput,hallInput].forEach((g,i)=>{
+        if(!g)return;
+        const skew=i*.004*rng();
+        g.gain.cancelScheduledValues(t+skew);
+        g.gain.setTargetAtTime(keep,t+skew,.004+collapse*.018);
+        g.gain.setTargetAtTime(1,t+skew+.018+rng()*(.03+collapse*.12),.008);
+      });
+    }
+  }
+
   phase+=.009+ent*.034;
   drawHamster(ent);
 }
