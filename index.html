@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.3.2</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.3.3</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -439,9 +439,9 @@ function initAudio(){
   master.gain.value=.90;
 
   comp=ctx.createDynamicsCompressor();
-  comp.threshold.value=-4.5;
+  comp.threshold.value=-5.5;
   comp.knee.value=3.0;
-  comp.ratio.value=14;
+  comp.ratio.value=18;
   comp.attack.value=.003;
   comp.release.value=.18;
 
@@ -674,7 +674,7 @@ function updateFX(){
   const hc=Math.pow(h,.74);
   hallWet.gain.setTargetAtTime(hc*1.42+d*.78,ctx.currentTime,.18);
 
-  master.gain.setTargetAtTime(v*1.20,ctx.currentTime,.10);
+  master.gain.setTargetAtTime(v*1.897,ctx.currentTime,.10);
 }
 
 function fireCrackle(){
