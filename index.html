@@ -50,6 +50,11 @@ h1{font-weight:400;font-size:15px;letter-spacing:.15em;margin:0}
   border-right:1px solid var(--line);padding-right:12px;min-height:0;
 }
 .param{min-height:0}
+.param input[type=range], .spaceRow input[type=range], .fx input[type=range], .entSlider{
+  padding:10px 0;
+  margin:-10px 0;
+  box-sizing:content-box;
+}
 .ph{display:flex;justify-content:space-between;align-items:end;margin-bottom:3px}
 .pname{font-size:14px;letter-spacing:.14em}
 .pval{font-size:15px;font-variant-numeric:tabular-nums}
@@ -59,6 +64,8 @@ h1{font-weight:400;font-size:15px;letter-spacing:.15em;margin:0}
 /* thin instrument slider */
 input[type=range]{
   -webkit-appearance:none;appearance:none;width:100%;height:16px;background:transparent;margin:0;
+  touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;
+  position:relative;
 }
 input[type=range]::-webkit-slider-runnable-track{
   height:1px;background:var(--ink);
@@ -159,7 +166,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 1.5.0</span><span>MM-001</span></footer>
+  <footer><span>ver. 1.5.2</span><span>MM-001</span></footer>
 </section>
 </main>
 
@@ -369,7 +376,6 @@ function fireCrackle(){
         s.start(t);
         s.stop(t+dur+.02);
       }
-    }
     }
     fireCrackle();
   },wait);
