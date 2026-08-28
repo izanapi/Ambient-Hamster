@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.2.5</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.2.6</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -665,7 +665,7 @@ function fireCrackle(){
         bp.Q.value=.7+rng()*2.8;
 
         const g=ctx.createGain();
-        const level=Math.max(.003,.025+amt*.105+rng()*.042+(rng()-.5)*collapse*.13);
+        const level=Math.max(.003,.038+amt*.025+rng()*.032+(rng()-.5)*collapse*.13);
         const t=now+k*(.018+rng()*.055);
 
         g.gain.setValueAtTime(.0001,t);
@@ -744,7 +744,7 @@ function tick(){
       m1=(5+vals[n]/100*16+(rng()-.5)*ent*4).toFixed(1);
       m2=(0.10+vals[n]/100*.82+(rng()-.5)*ent*.12).toFixed(3);
     }else if(n==='PYRO'){
-      m0=(0.25+vals[n]/100*7.0+(rng()-.5)*ent*1.1).toFixed(2);
+      m0=(0.45+Math.pow(vals[n]/100,.72)*18.0+(rng()-.5)*ent*2.0).toFixed(2);
       m1=Math.round(1800+vals[n]*42+(rng()-.5)*ent*900);
       m2=(1+Math.floor(vals[n]/28+rng()*(1+ent*3))).toFixed(0);
     }else{ // HUM
