@@ -217,7 +217,7 @@ footer{
 .left .param{
   min-height:0 !important;
   height:auto !important;
-  padding:5px 8px 4px 2px !important;
+  padding:5px 8px 4px 7px !important;
   border-bottom:1px solid var(--line) !important;
   overflow:hidden !important;
   display:grid !important;
@@ -267,7 +267,6 @@ footer{
     <div class="entVal" id="entropyNow">0.430000</div>
     <canvas id="core" width="300" height="280"></canvas>
     <input class="entSlider" id="entropy" type="range" min="0" max="100" value="43">
-    <div class="order"><span>ORDER</span><span>CHAOS</span></div>
     <div class="hist entHist" id="entropyHist"></div>
   </div>
 </section>
@@ -294,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.2.0</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.2.1</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -694,6 +693,7 @@ function scheduleGhost(){
 
 function tick(){
   const ent=+$('entropy').value/100;
+  const collapse=Math.pow(Math.max(0,(ent-.62)/.38),2.15);
 
   defs.forEach(([n])=>{
     const set=+$(n).value;
@@ -1301,4 +1301,11 @@ drawHamster(.43);
   padding-right:9px;
 }
 .status .topStart{border-right:0 !important}
+</style>
+
+<style>
+.left .param input[type=range]{
+  width:calc(100% - 2px) !important;
+  margin-left:-2px !important;
+}
 </style>
