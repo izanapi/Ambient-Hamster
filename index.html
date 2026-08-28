@@ -120,6 +120,50 @@ footer{
   button{min-height:27px}
 }
 </style>
+
+<style>
+/* v1.5.4 compact telemetry override */
+.left .param{
+  overflow:hidden !important;
+  padding:2px 0 3px !important;
+}
+.left .metrics{
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:2px !important;
+  margin-top:1px !important;
+  height:15px !important;
+  overflow:hidden !important;
+}
+.left .metric{
+  min-width:0 !important;
+  height:14px !important;
+  padding-top:1px !important;
+  border-top:1px solid var(--faint) !important;
+  overflow:hidden !important;
+}
+.left .metric .mk{
+  display:inline !important;
+  font-size:3.2px !important;
+  line-height:1 !important;
+  letter-spacing:.03em !important;
+  color:var(--dim) !important;
+  white-space:nowrap !important;
+}
+.left .metric .mv{
+  display:inline !important;
+  margin-left:2px !important;
+  font-size:3.5px !important;
+  line-height:1 !important;
+  letter-spacing:0 !important;
+  color:var(--dim) !important;
+  white-space:nowrap !important;
+  font-variant-numeric:tabular-nums !important;
+}
+.left .ph{margin-bottom:0 !important}
+.left .desc{margin-bottom:1px !important}
+</style>
+
 </head>
 <body>
 <main id="app">
@@ -166,7 +210,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 1.5.3</span><span>MM-001</span></footer>
+  <footer><span>ver. 1.5.5</span><span>MM-001</span></footer>
 </section>
 </main>
 
@@ -458,82 +502,362 @@ function tick(){
     if(nodes[1])nodes[1].frequency.setTargetAtTime(320+vals.AIR*23,ctx.currentTime,2.25);
   }
 
-  phase+=.0075+ent*.020;
+  phase+=.009+ent*.034;
   drawHamster(ent);
 }
-setInterval(tick,70);
+setInterval(tick,45);
 
 function drawHamster(ent){
   const c=$('core'),x=c.getContext('2d'),w=c.width,h=c.height;
   x.clearRect(0,0,w,h);
+
   const cx=w/2,cy=h/2+2;
-  const chaos=Math.max(0,(ent-.08)/.92),high=Math.pow(chaos,1.45),t=phase*5.8;
+  const chaos=Math.max(0,(ent-.06)/.94);
+  const high=Math.pow(chaos,1.35);
+  const extreme=Math.pow(chaos,2.25);
+  const t=phase*6.2;
 
-  x.save();x.translate(cx,cy);
-  x.strokeStyle='rgba(242,238,220,.10)';x.lineWidth=1;
-  x.beginPath();x.ellipse(0,0,w*.34,h*.34,0,0,Math.PI*2);x.stroke();
-  x.beginPath();x.ellipse(0,0,w*.43,h*.22,.42,0,Math.PI*2);x.stroke();
-  x.beginPath();x.ellipse(0,0,w*.39,h*.18,-.55,0,Math.PI*2);x.stroke();
+  x.save();
+  x.translate(cx,cy);
 
-  const driftX=Math.sin(phase*.72)*14+Math.sin(phase*.19)*7;
-  const driftY=Math.cos(phase*.53)*9+Math.sin(phase*.31)*5;
-  const rot=Math.sin(phase*.34)*.16+phase*(.010+ent*.055)+Math.sin(phase*1.7)*high*.06;
-  x.translate(driftX,driftY);x.rotate(rot);
-  const sc=1+Math.sin(phase*.8)*.025+Math.sin(phase*2.3)*.012*ent;x.scale(sc,sc);
-  const j=()=> (rng()-.5)*(2+14*high);
+  // =========================================================
+  // BACKGROUND FIELD: dense tiny running noise behind all forms
+  // =========================================================
+  const bgCount=70+Math.floor(ent*190);
+  x.fillStyle='rgba(242,238,220,.18)';
+  x.strokeStyle='rgba(242,238,220,.12)';
+  for(let i=0;i<bgCount;i++){
+    const seedA=(i*12.9898 + seed*.000001);
+    const a=(rng()*Math.PI*2)+(phase*(.05 + (i%7)*.003));
+    const rr=18+rng()*Math.min(w,h)*.54;
+    const px=Math.cos(a)*rr + Math.sin(phase*.7+i)*8*high;
+    const py=Math.sin(a)*rr*.72 + Math.cos(phase*.4+i*.4)*6*high;
 
-  x.strokeStyle='rgba(242,238,220,.84)';x.fillStyle='rgba(242,238,220,.94)';x.lineWidth=1.1;
-  x.beginPath();x.moveTo(-52+j(),-6+j());
+    if(i%4===0){
+      // short "running" scan streaks
+      const len=2+rng()*(4+ent*14);
+      x.beginPath();
+      x.moveTo(px-len,py);
+      x.lineTo(px+len,py+(rng()-.5)*2*high);
+      x.stroke();
+    }else{
+      const s=.55+rng()*.75;
+      x.fillRect(px,py,s,s);
+    }
+  }
+
+  // faint horizontal scan speckles across full section
+  x.strokeStyle='rgba(242,238,220,.055)';
+  for(let row=-h*.42;row<h*.42;row+=11){
+    const shift=Math.sin(phase*.6+row*.08)*7*high;
+    x.beginPath();
+    x.moveTo(-w*.46+shift,row);
+    x.lineTo(w*.46+shift,row+(rng()-.5)*1.5*high);
+    x.stroke();
+  }
+
+  // =========================================================
+  // ORBITAL RINGS: rotating, trembling, increasingly deformed
+  // =========================================================
+  function noisyEllipse(rx,ry,rot,squash,alpha,segments=54){
+    x.save();
+    x.rotate(rot);
+    x.strokeStyle=`rgba(242,238,220,${alpha})`;
+    x.beginPath();
+    for(let i=0;i<=segments;i++){
+      const a=i/segments*Math.PI*2;
+      const wobble =
+        Math.sin(a*5 + phase*2.1)*2.4*chaos +
+        Math.sin(a*11 - phase*1.4)*1.2*high +
+        (rng()-.5)*9*extreme;
+      const px=Math.cos(a)*(rx+wobble);
+      const py=Math.sin(a)*(ry+wobble*squash);
+      if(i===0)x.moveTo(px,py);else x.lineTo(px,py);
+    }
+    x.closePath();
+    x.stroke();
+    x.restore();
+  }
+
+  const ringSpin=phase*(.10+ent*.55);
+  const ringShake=(rng()-.5)*.035*high;
+
+  noisyEllipse(
+    w*.34, h*.34,
+    ringSpin + ringShake,
+    .7,
+    .10 + ent*.08
+  );
+
+  noisyEllipse(
+    w*.43, h*.22,
+    .42 - ringSpin*.72 + Math.sin(phase*.9)*.08*high,
+    .55,
+    .10 + ent*.10
+  );
+
+  noisyEllipse(
+    w*.39, h*.18,
+    -.55 + ringSpin*1.18 + Math.cos(phase*.7)*.11*high,
+    .6,
+    .08 + ent*.09
+  );
+
+  // orbit ticks that rotate separately
+  x.strokeStyle='rgba(242,238,220,.12)';
+  const ticks=20+Math.floor(ent*20);
+  for(let i=0;i<ticks;i++){
+    const a=i/ticks*Math.PI*2 + ringSpin*.85;
+    const r=Math.min(w,h)*(.34 + (i%3)*.014);
+    const wob=(rng()-.5)*10*extreme;
+    x.beginPath();
+    x.moveTo(Math.cos(a)*(r+wob),Math.sin(a)*(r+wob));
+    x.lineTo(Math.cos(a)*(r+3+wob),Math.sin(a)*(r+3+wob));
+    x.stroke();
+  }
+
+  // =========================================================
+  // HAMSTER TRANSFORM: float -> tumble -> violent loss of form
+  // =========================================================
+  const driftX=
+    Math.sin(phase*.72)*14 +
+    Math.sin(phase*.19)*7 +
+    Math.sin(phase*2.7)*24*extreme;
+
+  const driftY=
+    Math.cos(phase*.53)*9 +
+    Math.sin(phase*.31)*5 +
+    Math.cos(phase*2.15)*20*extreme;
+
+  // low entropy = gentle roll, high entropy = continuous tumbling
+  const rot=
+    Math.sin(phase*.34)*.18 +
+    phase*(.012 + ent*.16) +
+    Math.sin(phase*1.7)*high*.14 +
+    Math.sin(phase*3.8)*extreme*.40;
+
+  x.translate(driftX,driftY);
+  x.rotate(rot);
+
+  // asymmetric scale at high entropy makes the body stop holding shape
+  const sx=
+    1 +
+    Math.sin(phase*.8)*.025 +
+    Math.sin(phase*2.3)*.018*ent +
+    Math.sin(phase*4.5)*.20*extreme;
+
+  const sy=
+    1 +
+    Math.cos(phase*.67)*.020 +
+    Math.sin(phase*3.2)*.012*ent -
+    Math.sin(phase*4.1)*.16*extreme;
+
+  x.scale(sx,sy);
+
+  // jitter amplitude grows brutally at the top
+  const jAmp=1.5 + 15*high + 34*extreme;
+  const j=()=> (rng()-.5)*jAmp;
+
+  x.strokeStyle='rgba(242,238,220,.84)';
+  x.fillStyle='rgba(242,238,220,.94)';
+  x.lineWidth=1.05;
+
+  // body
+  x.beginPath();
+  x.moveTo(-52+j(),-6+j());
   x.bezierCurveTo(-43+j(),-35+j(),13+j(),-38+j(),55+j(),-15+j());
   x.bezierCurveTo(74+j(),-3+j(),70+j(),26+j(),39+j(),38+j());
-  x.bezierCurveTo(8+j(),50+j(),-37+j(),36+j(),-52+j(),13+j());x.closePath();x.stroke();
+  x.bezierCurveTo(8+j(),50+j(),-37+j(),36+j(),-52+j(),13+j());
+  x.closePath();
+  x.stroke();
 
-  x.beginPath();x.moveTo(-50+j(),-15+j());
+  // head
+  x.beginPath();
+  x.moveTo(-50+j(),-15+j());
   x.bezierCurveTo(-70+j(),-23+j(),-82+j(),-12+j(),-78+j(),2+j());
-  x.bezierCurveTo(-73+j(),16+j(),-61+j(),19+j(),-47+j(),10+j());x.stroke();
+  x.bezierCurveTo(-73+j(),16+j(),-61+j(),19+j(),-47+j(),10+j());
+  x.stroke();
 
-  x.beginPath();x.arc(-48+j(),-29+j(),9+high*2,0,Math.PI*2);x.stroke();
+  // ear
+  x.beginPath();
+  x.arc(-48+j(),-29+j(),9+high*3,0,Math.PI*2);
+  x.stroke();
+
+  // eye + nose
   x.fillStyle='rgba(242,238,220,.95)';
-  x.beginPath();x.arc(-64+j()*.12,-10+j()*.12,2.6,0,Math.PI*2);x.fill();
-  x.beginPath();x.arc(-79+j()*.12,1+j()*.12,1.8,0,Math.PI*2);x.fill();
+  x.beginPath();x.arc(-64+j()*.16,-10+j()*.16,2.6,0,Math.PI*2);x.fill();
+  x.beginPath();x.arc(-79+j()*.16,1+j()*.16,1.8,0,Math.PI*2);x.fill();
 
+  // whiskers become unstable vectors
   x.strokeStyle='rgba(242,238,220,.42)';
-  [-1,0,1].forEach(k=>{x.beginPath();x.moveTo(-73,-2+k*3);x.lineTo(-99-rng()*14*high,-8+k*7+(rng()-.5)*12*high);x.stroke()});
+  [-1,0,1].forEach(k=>{
+    x.beginPath();
+    x.moveTo(-73+j()*.1,-2+k*3+j()*.1);
+    x.lineTo(
+      -99-rng()*(14+38*extreme),
+      -8+k*7+(rng()-.5)*(12+42*extreme)
+    );
+    x.stroke();
+  });
 
+  // tail
   x.strokeStyle='rgba(242,238,220,.64)';
-  x.beginPath();x.moveTo(57+j()*.2,5+j()*.2);x.bezierCurveTo(86+j(),-5+j(),88+j(),16+j(),71+j(),21+j());x.stroke();
+  x.beginPath();
+  x.moveTo(57+j()*.2,5+j()*.2);
+  x.bezierCurveTo(
+    86+j(),-5+j(),
+    88+j(),16+j(),
+    71+j(),21+j()
+  );
+  x.stroke();
 
-  const speed=1.3+ent*3.3,k1=Math.sin(t*speed),k2=Math.sin(t*speed+Math.PI);
+  // =========================================================
+  // LIMBS: frantic paddling that accelerates with entropy
+  // =========================================================
+  const speed=1.4 + ent*7.0;
+  const k1=Math.sin(t*speed);
+  const k2=Math.sin(t*speed+Math.PI);
+
   function paddle(x0,y0,kick,front,offset){
-    const swing=kick*(13+ent*14)+(rng()-.5)*20*high;
-    const lift=Math.cos(t*(1.1+ent*1.8)+offset)*8;
-    x.beginPath();x.moveTo(x0+j()*.18,y0+j()*.18);
-    x.lineTo(x0+swing*.45,y0+10+lift);
-    x.lineTo(x0+swing,y0+18+lift+(rng()-.5)*12*high);
-    if(front)x.lineTo(x0+swing+7,y0+17+lift);x.stroke();
+    const swing=
+      kick*(14+ent*22) +
+      Math.sin(t*1.7+offset)*12*high +
+      (rng()-.5)*(18+36*extreme);
+
+    const lift=
+      Math.cos(t*(1.1+ent*3.1)+offset)*(8+ent*7);
+
+    x.beginPath();
+    x.moveTo(x0+j()*.16,y0+j()*.16);
+    x.lineTo(
+      x0+swing*.45,
+      y0+10+lift+j()*.14
+    );
+    x.lineTo(
+      x0+swing,
+      y0+18+lift+(rng()-.5)*(12+25*extreme)
+    );
+    if(front)x.lineTo(
+      x0+swing+7+(rng()-.5)*10*extreme,
+      y0+17+lift
+    );
+    x.stroke();
   }
+
   x.strokeStyle='rgba(242,238,220,.80)';
-  paddle(-27,18,k1,false,.1);paddle(-6,24,k2,false,1.2);paddle(22,22,k1,true,2.3);paddle(44,15,k2,true,3.0);
+  paddle(-27,18,k1,false,.1);
+  paddle(-6,24,k2,false,1.2);
+  paddle(22,22,k1,true,2.3);
+  paddle(44,15,k2,true,3.0);
 
-  const paw=Math.sin(t*(1.9+ent*2.2))*10;
-  x.beginPath();x.moveTo(-18,0);x.lineTo(-6+paw,9+(rng()-.5)*8*high);x.lineTo(-1+paw,5+(rng()-.5)*8*high);x.stroke();
+  const paw=Math.sin(t*(2.0+ent*4.2))*(10+ent*11);
+  x.beginPath();
+  x.moveTo(-18+j()*.1,0+j()*.1);
+  x.lineTo(
+    -6+paw,
+    9+(rng()-.5)*(8+18*extreme)
+  );
+  x.lineTo(
+    -1+paw,
+    5+(rng()-.5)*(8+18*extreme)
+  );
+  x.stroke();
 
-  const bp=[[-45,-10],[-20,-28],[10,-31],[39,-18],[55,2],[38,28],[8,38],[-22,29],[-42,12],[-7,2],[25,4]];
+  // =========================================================
+  // BODY WIREFRAME: starts coherent, breaks apart with entropy
+  // =========================================================
+  const bp=[
+    [-45,-10],[-20,-28],[10,-31],[39,-18],[55,2],
+    [38,28],[8,38],[-22,29],[-42,12],[-7,2],[25,4]
+  ];
+
   x.strokeStyle='rgba(242,238,220,.19)';
-  for(let a=0;a<bp.length;a++)for(let b=a+1;b<bp.length;b++)if(((a*7+b*11+seed)%10)<2){x.beginPath();x.moveTo(bp[a][0]+j()*.35,bp[a][1]+j()*.35);x.lineTo(bp[b][0]+j()*.35,bp[b][1]+j()*.35);x.stroke()}
-  x.restore();
+  for(let a=0;a<bp.length;a++){
+    for(let b=a+1;b<bp.length;b++){
+      if(((a*7+b*11+seed)%10)<2 + Math.floor(ent*2)){
+        x.beginPath();
+        x.moveTo(
+          bp[a][0]+j()*.42,
+          bp[a][1]+j()*.42
+        );
+        x.lineTo(
+          bp[b][0]+j()*.42,
+          bp[b][1]+j()*.42
+        );
+        x.stroke();
+      }
+    }
+  }
 
-  const particles=14+Math.floor(ent*70);
-  x.strokeStyle='rgba(242,238,220,.35)';x.fillStyle='rgba(242,238,220,.48)';
+  // high entropy: duplicate ghost outlines, visibly losing coherence
+  if(ent>.68){
+    const ghosts=1+Math.floor((ent-.68)*7);
+    x.strokeStyle='rgba(242,238,220,.08)';
+    for(let g=0;g<ghosts;g++){
+      const gx=(rng()-.5)*28*extreme;
+      const gy=(rng()-.5)*28*extreme;
+      x.beginPath();
+      x.ellipse(
+        gx,gy,
+        58+(rng()-.5)*22*extreme,
+        34+(rng()-.5)*18*extreme,
+        (rng()-.5)*.6*extreme,
+        0,Math.PI*2
+      );
+      x.stroke();
+    }
+  }
+
+  x.restore(); // hamster transform
+
+  // =========================================================
+  // DEBRIS FIELD: sits around/behind hamster, density via entropy
+  // =========================================================
+  const particles=24+Math.floor(ent*105);
+  x.strokeStyle='rgba(242,238,220,.30)';
+  x.fillStyle='rgba(242,238,220,.44)';
+
   for(let i=0;i<particles;i++){
-    const a=rng()*Math.PI*2,rr=50+rng()*(85+high*65),px=Math.cos(a+phase*.11)*rr,py=Math.sin(a+phase*.11)*rr*.68;
-    if(rng()<.62)x.fillRect(px,py,1.15,1.15);
-    else{const sz=2+rng()*8*high;x.beginPath();x.moveTo(px-sz,py);x.lineTo(px,py-sz*.55);x.lineTo(px+sz,py);x.stroke()}
+    const a=rng()*Math.PI*2;
+    const rr=42+rng()*(92+high*78);
+    const px=
+      Math.cos(a+phase*.17)*rr +
+      Math.sin(phase*1.8+i)*10*high;
+    const py=
+      Math.sin(a+phase*.14)*rr*.69 +
+      Math.cos(phase*1.35+i*.3)*8*high;
+
+    if(rng()<.58){
+      x.fillRect(px,py,1.0,1.0);
+    }else{
+      const sz=2+rng()*(6+12*extreme);
+      x.beginPath();
+      x.moveTo(px-sz,py);
+      x.lineTo(px,py-sz*.55);
+      x.lineTo(px+sz,py);
+      x.stroke();
+    }
   }
-  if(ent>.38){
-    const n=Math.floor((ent-.38)*55);x.strokeStyle='rgba(242,238,220,.24)';
-    for(let i=0;i<n;i++){const px=(rng()-.5)*w*.80,py=(rng()-.5)*h*.68;x.beginPath();x.moveTo(px,py);x.lineTo(px+(rng()-.5)*52*high,py+(rng()-.5)*52*high);x.stroke()}
+
+  // entropy scratches
+  if(ent>.32){
+    const n=Math.floor((ent-.32)*80);
+    x.strokeStyle='rgba(242,238,220,.20)';
+    for(let i=0;i<n;i++){
+      const px=(rng()-.5)*w*.86;
+      const py=(rng()-.5)*h*.72;
+      const len=10+rng()*(18+48*extreme);
+      const ang=(rng()-.5)*(1.2+extreme*2.4);
+      x.beginPath();
+      x.moveTo(px,py);
+      x.lineTo(
+        px+Math.cos(ang)*len,
+        py+Math.sin(ang)*len
+      );
+      x.stroke();
+    }
   }
+
   x.restore();
 }
 
