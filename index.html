@@ -254,7 +254,7 @@ footer{
       <span class="clockBox">TIME <span id="clock">00:00:00</span></span>
       <span class="seedReadout">SEED <b id="seedValue">--------</b></span>
       <button id="reroll" class="reroll" aria-label="Reroll seed">⚄ REROLL</button>
-      <button id="start" class="topStart">▶ START</button>
+      <button id="start" class="topStart">▶ PLAY</button>
     </div>
   </div>
 </header>
@@ -294,13 +294,13 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 1.9.2</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.0.0</span><span>HM-001</span></footer>
 </section>
 </main>
 
 <script>
 const $=id=>document.getElementById(id);
-const defs=[['TIDAL','tidal noise field',50],['DRONE','harmonic field',35],['GHOST','rare events',18],['PYRO','spark events',16],['HUM','mains resonance',12]];
+const defs=[['TIDAL','tidal noise field',10],['DRONE','harmonic field',35],['GHOST','rare events',18],['PYRO','spark events',16],['HUM','mains resonance',12]];
 const metricDefs={
   TIDAL:[['SURGE',''],['FOAM','Hz'],['TIDE','s']],
   DRONE:[['ROOT','Hz'],['DETUNE','ct'],['DENS','']],
@@ -341,7 +341,7 @@ function freshSeed(){
   return (Math.random()*0xffffffff)>>>0;
 }
 let baseSeed=freshSeed(),seed=baseSeed,phase=0,nodes=[];
-let vals={TIDAL:50,DRONE:35,GHOST:18,PYRO:16,HUM:12,entropy:43};
+let vals={TIDAL:10,DRONE:35,GHOST:18,PYRO:16,HUM:12,entropy:43};
 
 function rng(){seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
 function seedHex(v){return (v>>>0).toString(16).toUpperCase().padStart(8,'0')}
@@ -352,16 +352,27 @@ function rerollSeed(){
   phase=(baseSeed/4294967296)*Math.PI*2;
   showSeed();
 
-  // Re-seed the continuously audible random textures when already running.
+  // REROLL now changes the actual generator controls.
+  defs.forEach(([n])=>{
+    // Keep a small floor so every reroll tends to produce an audible machine.
+    let v=Math.round(5+rng()*90);
+    // TIDAL is intentionally a little more restrained because it dominates easily.
+    if(n==='TIDAL') v=Math.round(3+rng()*57);
+    const el=$(n);
+    if(el){
+      el.value=v;
+      vals[n]=v;
+      const now=$(n+'Now');
+      if(now) now.textContent=v.toFixed(4);
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+  });
+
+  // Re-seed continuous random textures while running.
   if(ctx){
     try{if(waveSource)waveSource.buffer=noiseBuffer()}catch(e){}
     try{if(hall)hall.buffer=makeHallIR()}catch(e){}
   }
-
-  // Give internal meters a fresh "machine state" without moving user sliders.
-  defs.forEach(([n])=>{
-    vals[n]=+$(`${n}`)?.value || vals[n];
-  });
 }
 function noiseBuffer(sec=2){
   const b=ctx.createBuffer(1,Math.floor(ctx.sampleRate*sec),ctx.sampleRate);
@@ -525,7 +536,7 @@ function scheduleHumDrop(){
       s.buffer=b;
       hp.type='highpass';
       hp.frequency.value=900+rng()*1400;
-      g.gain.value=.006+amt*.022;
+      g.gain.value=.010+amt*.034;
       s.connect(hp).connect(g).connect(dryBus);
       s.start(t+dip*.35);
       s.stop(t+dip*.35+.02);
@@ -610,7 +621,7 @@ function fireCrackle(){
         bp.Q.value=.7+rng()*2.8;
 
         const g=ctx.createGain();
-        const level=.012+amt*.055+rng()*.025;
+        const level=.025+amt*.105+rng()*.042;
         const t=now+k*(.018+rng()*.055);
 
         g.gain.setValueAtTime(.0001,t);
@@ -649,7 +660,7 @@ function scheduleGhost(){
       o.type='sine';
       o.frequency.value=pitches[Math.floor(rng()*pitches.length)]/(rng()<.3?2:1);
       f.type='lowpass';f.frequency.value=700+rng()*1400;
-      const t=ctx.currentTime,a=1.8+rng()*3.2,d=6+rng()*11,amp=.008+density*.035;
+      const t=ctx.currentTime,a=1.8+rng()*3.2,d=6+rng()*11,amp=.018+density*.075;
       g.gain.setValueAtTime(.0001,t);
       g.gain.exponentialRampToValueAtTime(amp,t+a);
       g.gain.exponentialRampToValueAtTime(.0001,t+a+d);
@@ -737,11 +748,11 @@ function tick(){
       waveFilter.Q.setTargetAtTime(.28+waveAmt*.18+ent*.48,ctx.currentTime,.8);
     }
 
-    droneGain.gain.setTargetAtTime(.003+vals.DRONE/100*.065,ctx.currentTime,1.95);
+    droneGain.gain.setTargetAtTime(.006+vals.DRONE/100*.120,ctx.currentTime,1.35);
 
     if(humGain&&humOsc1&&humOsc2){
       const humAmt=vals.HUM/100;
-      humGain.gain.setTargetAtTime(humAmt*.055,ctx.currentTime,.45);
+      humGain.gain.setTargetAtTime(humAmt*.105,ctx.currentTime,.35);
       const mains=49.85+(rng()-.5)*ent*.18;
       humOsc1.frequency.setTargetAtTime(mains,ctx.currentTime,.9);
       humOsc2.frequency.setTargetAtTime(mains*2+(rng()-.5)*ent*.6,ctx.currentTime,.9);
@@ -1157,21 +1168,36 @@ document.querySelectorAll('input[type="range"]').forEach(installWideRangeControl
 $('start').addEventListener('click',async()=>{
   if(!started){
     if(!await ensureAudio())return;
-    started=true;startTime=Date.now();
-    $('start').textContent='Ⅱ PAUSE';
+
+    started=true;
+    startTime=Date.now();
+    $('start').textContent='■ STOP';
+
     scheduleGhost();
+    fireCrackle();
+    scheduleHumDrop();
+
     clearInterval(timer);
+    $('clock').textContent='00:00:00';
     timer=setInterval(()=>{
       const s=Math.floor((Date.now()-startTime)/1000);
       $('clock').textContent=[s/3600,s/60%60,s%60]
         .map(v=>String(Math.floor(v)).padStart(2,'0')).join(':');
     },1000);
-  }else if(ctx&&ctx.state==='running'){
-    await ctx.suspend();
-    $('start').textContent='▶ RESUME';
-  }else if(ctx){
-    await ctx.resume();
-    $('start').textContent='Ⅱ PAUSE';
+  }else{
+    started=false;
+
+    clearInterval(timer);
+    clearTimeout(ghostTimer);
+    clearTimeout(crackleTimer);
+    clearTimeout(humDropTimer);
+
+    if(ctx&&ctx.state==='running'){
+      try{await ctx.suspend()}catch(e){}
+    }
+
+    $('start').textContent='▶ PLAY';
+    $('clock').textContent='00:00:00';
   }
 });
 
