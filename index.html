@@ -264,7 +264,7 @@ footer{
 
   <div class="right">
     <div class="entLabel">ENTROPY</div>
-    <div class="entVal" id="entropyNow">43.0000</div>
+    <div class="entVal" id="entropyNow">0.430000</div>
     <canvas id="core" width="300" height="280"></canvas>
     <input class="entSlider" id="entropy" type="range" min="0" max="100" value="43">
     <div class="order"><span>ORDER</span><span>CHAOS</span></div>
@@ -274,8 +274,8 @@ footer{
 
 <section class="bottom">
   <div class="spaceRow">
-    <label>SPACE</label>
-    <input id="space" type="range" min="0" max="100" value="72">
+    <label>DISTANCE</label>
+    <input id="distance" type="range" min="0" max="100" value="72">
     <span class="num" id="spaceV">72</span>
   </div>
 
@@ -294,7 +294,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.0.0</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.1.0</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -329,7 +329,7 @@ defs.forEach(([n])=>{
 });
 
 let ctx=null, master=null, comp=null, spacePan=null, spaceEarly=null, spaceEarlyGain=null, spaceEarlyTap2=null, spaceEarlyGain2=null;
-let dryBus=null, spaceFilter=null;
+let dryBus=null, spaceFilter=null, dryInput=null, echoInput=null, hallInput=null;
 let echoDelay=null, echoFeedback=null, echoWet=null;
 let hall=null, hallWet=null;
 let airGain=null, droneGain=null, waveGain=null, waveFilter=null, waveLfo=null, waveLfoGain=null, waveSource=null, humGain=null, humOsc1=null, humOsc2=null, humLfo=null, humLfoGain=null, humCut=null, humDropTimer=null;
@@ -370,7 +370,6 @@ function rerollSeed(){
 
   // Re-seed continuous random textures while running.
   if(ctx){
-    try{if(waveSource)waveSource.buffer=noiseBuffer()}catch(e){}
     try{if(hall)hall.buffer=makeHallIR()}catch(e){}
   }
 }
@@ -394,9 +393,9 @@ function makeHallIR(seconds=10.5,decay=2.0){
   return b;
 }
 function routeSource(node){
-  node.connect(dryBus);
-  node.connect(echoDelay);
-  node.connect(hall);
+  node.connect(dryInput);
+  node.connect(echoInput);
+  node.connect(hallInput);
 }
 function initAudio(){
   const AC=window.AudioContext||window.webkitAudioContext;
@@ -409,7 +408,18 @@ function initAudio(){
   comp.threshold.value=-12;comp.ratio.value=5;comp.attack.value=.01;comp.release.value=.25;
   comp.connect(master);master.connect(ctx.destination);
 
+  // Source-input gates. STOP closes these, but leaves effect outputs alive
+  // so echo and hall tails can decay naturally.
+  dryInput=ctx.createGain();
+  echoInput=ctx.createGain();
+  hallInput=ctx.createGain();
+  dryInput.gain.value=1;
+  echoInput.gain.value=1;
+  hallInput.gain.value=1;
+
   dryBus=ctx.createGain();
+  dryInput.connect(dryBus);
+
   spaceFilter=ctx.createBiquadFilter();
   spaceFilter.type='lowpass';spaceFilter.frequency.value=4200;spaceFilter.Q.value=.25;
 
@@ -425,6 +435,7 @@ function initAudio(){
   dryBus.connect(spaceEarlyTap2).connect(spaceEarlyGain2).connect(comp);
 
   echoDelay=ctx.createDelay(2.5);
+  echoInput.connect(echoDelay);
   echoFeedback=ctx.createGain();
   echoWet=ctx.createGain();
   echoDelay.connect(echoFeedback);
@@ -433,12 +444,14 @@ function initAudio(){
   echoWet.connect(comp);
 
   hall=ctx.createConvolver();
+  hallInput.connect(hall);
   hall.buffer=makeHallIR();
   hallWet=ctx.createGain();
   hall.connect(hallWet);
   hallWet.connect(comp);
 
   const src=ctx.createBufferSource();
+  waveSource=src;
   src.buffer=noiseBuffer();src.loop=true;
   const bp=ctx.createBiquadFilter();
   bp.type='bandpass';bp.frequency.value=900;bp.Q.value=.45;
@@ -537,7 +550,7 @@ function scheduleHumDrop(){
       hp.type='highpass';
       hp.frequency.value=900+rng()*1400;
       g.gain.value=.010+amt*.034;
-      s.connect(hp).connect(g).connect(dryBus);
+      s.connect(hp).connect(g).connect(dryInput);
       s.start(t+dip*.35);
       s.stop(t+dip*.35+.02);
     }
@@ -547,33 +560,39 @@ function scheduleHumDrop(){
 
 function updateFX(){
   if(!ctx)return;
-  const s=+$('space').value/100;
+  const s=+$('distance').value/100;
   const e=+$('echo').value/100;
   const h=+$('hall').value/100;
   const v=+$('volume').value/100;
 
-  // SPACE = distance / width / early reflections / drift
-  spaceFilter.frequency.setTargetAtTime(7600-s*6200,ctx.currentTime,.45);
-  dryBus.gain.setTargetAtTime(1-s*.34,ctx.currentTime,.35);
+  // DISTANCE: deliberately obvious. Direct sound retreats hard,
+  // loses high frequencies, and reflections take over.
+  const d=Math.pow(s,1.12);
+  const direct=Math.max(.16,1-d*.84);
+  const cutoff=11000*Math.pow(0.105,d); // ~11 kHz near -> ~1.15 kHz far
+
+  spaceFilter.frequency.setTargetAtTime(cutoff,ctx.currentTime,.28);
+  spaceFilter.Q.setTargetAtTime(.22+d*.20,ctx.currentTime,.35);
+  dryBus.gain.setTargetAtTime(direct,ctx.currentTime,.22);
 
   if(spaceEarly){
-    spaceEarly.delayTime.setTargetAtTime(.018+s*.085,ctx.currentTime,.35);
-    spaceEarlyGain.gain.setTargetAtTime(s*.24,ctx.currentTime,.25);
+    spaceEarly.delayTime.setTargetAtTime(.012+d*.115,ctx.currentTime,.25);
+    spaceEarlyGain.gain.setTargetAtTime(d*.48,ctx.currentTime,.20);
   }
   if(spaceEarlyTap2){
-    spaceEarlyTap2.delayTime.setTargetAtTime(.037+s*.145,ctx.currentTime,.35);
-    spaceEarlyGain2.gain.setTargetAtTime(s*.16,ctx.currentTime,.25);
+    spaceEarlyTap2.delayTime.setTargetAtTime(.027+d*.205,ctx.currentTime,.25);
+    spaceEarlyGain2.gain.setTargetAtTime(d*.34,ctx.currentTime,.20);
   }
 
-  // ECHO
+  // ECHO remains its own control.
   const ec=Math.pow(e,1.18);
   echoDelay.delayTime.setTargetAtTime(.09+ec*1.42,ctx.currentTime,.18);
   echoFeedback.gain.setTargetAtTime(Math.min(.945,ec*.975),ctx.currentTime,.18);
   echoWet.gain.setTargetAtTime(ec*1.05,ctx.currentTime,.16);
 
-  // HALL
+  // HALL remains independent, but distant sources naturally feed more room.
   const hc=Math.pow(h,.74);
-  hallWet.gain.setTargetAtTime(hc*1.42 + s*.28,ctx.currentTime,.20);
+  hallWet.gain.setTargetAtTime(hc*1.42+d*.62,ctx.currentTime,.20);
 
   master.gain.setTargetAtTime(v*.60,ctx.currentTime,.10);
 }
@@ -631,13 +650,13 @@ function fireCrackle(){
         s.connect(hp).connect(bp).connect(g);
 
         // Mostly dry/nearby, with smaller sends into the shared space.
-        g.connect(dryBus);
+        g.connect(dryInput);
         const echoSend=ctx.createGain();
         echoSend.gain.value=.12;
         const hallSend=ctx.createGain();
         hallSend.gain.value=.08;
-        g.connect(echoSend).connect(echoDelay);
-        g.connect(hallSend).connect(hall);
+        g.connect(echoSend).connect(echoInput);
+        g.connect(hallSend).connect(hallInput);
 
         s.start(t);
         s.stop(t+dur+.02);
@@ -762,8 +781,9 @@ function tick(){
   }
 
   if(ctx&&spacePan){
-    const s=+$('space').value/100;
-    const pan=Math.sin(phase*.37)*s*.72 + Math.sin(phase*.11)*s*.18;
+    const s=+$('distance').value/100;
+    const d=Math.pow(s,1.08);
+    const pan=Math.sin(phase*.37)*d*.82 + Math.sin(phase*.11)*d*.16;
     spacePan.pan.setTargetAtTime(pan,ctx.currentTime,.55);
   }
   phase+=.009+ent*.034;
@@ -1158,12 +1178,18 @@ function installWideRangeControl(el){
 }
 document.querySelectorAll('input[type="range"]').forEach(installWideRangeControl);
 
-['space','echo','hall','volume'].forEach(id=>{
+['distance','echo','hall','volume'].forEach(id=>{
   $(id).addEventListener('input',e=>{
     $(id+'V').textContent=e.target.value;
     updateFX();
   });
 });
+
+$('reroll').addEventListener('click',rerollSeed);
+showSeed();
+const entropyReadout=$('entropyNow');
+if(entropyReadout) entropyReadout.textContent=(+$('entropy').value/100).toFixed(6);
+
 
 $('start').addEventListener('click',async()=>{
   if(!started){
@@ -1172,6 +1198,15 @@ $('start').addEventListener('click',async()=>{
     started=true;
     startTime=Date.now();
     $('start').textContent='■ STOP';
+
+    if(ctx){
+      const t=ctx.currentTime;
+      [dryInput,echoInput,hallInput].forEach(g=>{
+        if(!g)return;
+        g.gain.cancelScheduledValues(t);
+        g.gain.setTargetAtTime(1,t,.018);
+      });
+    }
 
     scheduleGhost();
     fireCrackle();
@@ -1193,7 +1228,12 @@ $('start').addEventListener('click',async()=>{
     clearTimeout(humDropTimer);
 
     if(ctx&&ctx.state==='running'){
-      try{await ctx.suspend()}catch(e){}
+      const t=ctx.currentTime;
+      [dryInput,echoInput,hallInput].forEach(g=>{
+        if(!g)return;
+        g.gain.cancelScheduledValues(t);
+        g.gain.setTargetAtTime(0,t,.012);
+      });
     }
 
     $('start').textContent='▶ PLAY';
