@@ -274,7 +274,7 @@ footer{
 <section class="bottom">
   <div class="spaceRow">
     <label>DISTANCE</label>
-    <input id="distance" type="range" min="0" max="100" value="72">
+    <input id="distance" type="range" min="0" max="100" value="10">
     <span class="num" id="distanceV">10</span>
   </div>
 
@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.2.2</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.2.3</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -328,7 +328,7 @@ defs.forEach(([n])=>{
 });
 
 let ctx=null, master=null, comp=null, spacePan=null, spaceEarly=null, spaceEarlyGain=null, spaceEarlyTap2=null, spaceEarlyGain2=null;
-let dryBus=null, spaceFilter=null, dryInput=null, echoInput=null, hallInput=null;
+let dryBus=null, spaceFilter=null, echoTone=null, hallTone=null, dryInput=null, echoInput=null, hallInput=null;
 let echoDelay=null, echoFeedback=null, echoWet=null;
 let hall=null, hallWet=null;
 let airGain=null, droneGain=null, waveGain=null, waveFilter=null, waveLfo=null, waveLfoGain=null, waveSource=null, humGain=null, humOsc1=null, humOsc2=null, humLfo=null, humLfoGain=null, humCut=null, humDropTimer=null;
@@ -416,6 +416,17 @@ function initAudio(){
   echoInput.gain.value=1;
   hallInput.gain.value=1;
 
+  // DISTANCE tone filters for wet paths too.
+  echoTone=ctx.createBiquadFilter();
+  echoTone.type='lowpass';
+  echoTone.frequency.value=14500;
+  echoTone.Q.value=.30;
+
+  hallTone=ctx.createBiquadFilter();
+  hallTone.type='lowpass';
+  hallTone.frequency.value=14500;
+  hallTone.Q.value=.30;
+
   dryBus=ctx.createGain();
   dryInput.connect(dryBus);
 
@@ -434,7 +445,7 @@ function initAudio(){
   dryBus.connect(spaceEarlyTap2).connect(spaceEarlyGain2).connect(comp);
 
   echoDelay=ctx.createDelay(2.5);
-  echoInput.connect(echoDelay);
+  echoInput.connect(echoTone).connect(echoDelay);
   echoFeedback=ctx.createGain();
   echoWet=ctx.createGain();
   echoDelay.connect(echoFeedback);
@@ -443,7 +454,7 @@ function initAudio(){
   echoWet.connect(comp);
 
   hall=ctx.createConvolver();
-  hallInput.connect(hall);
+  hallInput.connect(hallTone).connect(hall);
   hall.buffer=makeHallIR();
   hallWet=ctx.createGain();
   hall.connect(hallWet);
@@ -569,10 +580,13 @@ function updateFX(){
   // loses high frequencies, and reflections take over.
   const d=Math.pow(s,1.12);
   const direct=Math.max(.12,1-d*.88);
-  const cutoff=14500*Math.pow(0.035,d); // ~14.5 kHz near -> ~500 Hz far
+  const cutoff=16000*Math.pow(0.025,d); // ~16 kHz near -> ~400 Hz far
 
-  spaceFilter.frequency.setTargetAtTime(cutoff,ctx.currentTime,.28);
-  spaceFilter.Q.setTargetAtTime(.30+d*.72,ctx.currentTime,.24);
+  [spaceFilter,echoTone,hallTone].forEach(f=>{
+    if(!f)return;
+    f.frequency.setTargetAtTime(cutoff,ctx.currentTime,.20);
+    f.Q.setTargetAtTime(.32+d*.88,ctx.currentTime,.20);
+  });
   dryBus.gain.setTargetAtTime(direct,ctx.currentTime,.22);
 
   if(spaceEarly){
