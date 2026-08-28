@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.2.9</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.3.0</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -331,7 +331,7 @@ let ctx=null, master=null, comp=null, spacePan=null, spaceEarly=null, spaceEarly
 let dryBus=null, spaceFilter=null, echoTone=null, hallTone=null, dryInput=null, echoInput=null, hallInput=null;
 let echoDelay=null, echoFeedback=null, echoWet=null;
 let hall=null, hallWet=null;
-let airGain=null, droneGain=null, waveGain=null, waveFilter=null, waveLfo=null, waveLfoGain=null, waveSource=null, humGain=null, humOsc1=null, humOsc2=null, humLfo=null, humLfoGain=null, humCut=null, humDropTimer=null;
+let airGain=null, droneGain=null, droneOscs=[], waveGain=null, waveFilter=null, waveLfo=null, waveLfoGain=null, waveSource=null, humGain=null, humOsc1=null, humOsc2=null, humLfo=null, humLfoGain=null, humCut=null, humDropTimer=null;
 let started=false,startTime=0,timer=null,ghostTimer=null,crackleTimer=null;
 function freshSeed(){
   if(globalThis.crypto&&crypto.getRandomValues){
@@ -471,26 +471,50 @@ function initAudio(){
   hall.connect(hallWet);
   hallWet.connect(comp);
 
+  // TIDAL: filtered broadband surf with a slow amplitude tide.
   const src=ctx.createBufferSource();
   waveSource=src;
   src.buffer=noiseBuffer();src.loop=true;
-  const bp=ctx.createBiquadFilter();
-  bp.type='bandpass';bp.frequency.value=900;bp.Q.value=.45;
-  airGain=ctx.createGain();airGain.gain.value=.07;
-  src.connect(bp).connect(airGain);
-  routeSource(airGain);
-  src.start();
-  nodes.push(src,bp);
 
-  droneGain=ctx.createGain();droneGain.gain.value=.045;
+  waveFilter=ctx.createBiquadFilter();
+  waveFilter.type='bandpass';
+  waveFilter.frequency.value=700;
+  waveFilter.Q.value=.32;
+
+  waveGain=ctx.createGain();
+  waveGain.gain.value=.42;
+
+  airGain=ctx.createGain();
+  airGain.gain.value=0;
+
+  waveLfo=ctx.createOscillator();
+  waveLfo.type='sine';
+  waveLfo.frequency.value=.065;
+
+  waveLfoGain=ctx.createGain();
+  waveLfoGain.gain.value=.055;
+
+  src.connect(waveFilter).connect(waveGain).connect(airGain);
+  waveLfo.connect(waveLfoGain).connect(waveGain.gain);
+  routeSource(airGain);
+
+  src.start();
+  waveLfo.start();
+  nodes.push(src,waveFilter,waveLfo);
+
+  droneGain=ctx.createGain();droneGain.gain.value=0;
   routeSource(droneGain);
+  droneOscs=[];
   [73.42,110,146.83].forEach((f,i)=>{
     const o=ctx.createOscillator(),g=ctx.createGain();
     o.type=i===0?'triangle':'sine';
-    o.frequency.value=f*(1+(rng()-.5)*.004);
+    const baseHz=f*(1+(rng()-.5)*.004);
+    o.frequency.value=baseHz;
     g.gain.value=[.5,.22,.12][i];
     o.connect(g).connect(droneGain);
-    o.start();nodes.push(o);
+    o.start();
+    droneOscs.push({osc:o,baseHz});
+    nodes.push(o);
   });
 
   // HUM: low mains-like electrical resonance + slight mechanical wobble
@@ -552,7 +576,8 @@ function scheduleHumDrop(){
   const wait=1200+rng()*Math.max(650,7600-amt*3500-ent*2600-collapse*4300);
 
   humDropTimer=setTimeout(()=>{
-    if(started&&ctx.state==='running'&&amt>.03&&rng()<Math.min(.94,.16+amt*.42+ent*.28+collapse*.52)){
+    const liveAmt=+$('HUM').value/100;
+    if(started&&ctx.state==='running'&&liveAmt>.03&&rng()<Math.min(.94,.16+liveAmt*.42+ent*.28+collapse*.52)){
       const t=ctx.currentTime;
       const dip=.020+rng()*(.10+collapse*.33);
       humCut.gain.cancelScheduledValues(t);
@@ -571,7 +596,7 @@ function scheduleHumDrop(){
       s.buffer=b;
       hp.type='highpass';
       hp.frequency.value=900+rng()*1400;
-      g.gain.value=.010+amt*.034;
+      g.gain.value=.010+liveAmt*.034;
       s.connect(hp).connect(g).connect(dryInput);
       s.start(t+dip*.35);
       s.stop(t+dip*.35+.02);
@@ -704,8 +729,14 @@ function fireCrackle(){
       peak.gain.value=2+rng()*5;
 
       const g=ctx.createGain();
-      // Presence rises modestly, while density does most of the work.
-      const level=.050+liveDensity*.040+liveRush*.025+rng()*.030;
+      // Wide per-hit dynamics: tiny embers, normal snaps, occasional strong pops.
+      // PYRO still primarily controls density, not the average output level.
+      const accent=Math.pow(rng(),1.65);
+      let level=.018+liveDensity*.025+liveRush*.014
+        +accent*(.030+liveDensity*.080+liveRush*.030);
+      if(rng()<.055+liveDensity*.075) level*=1.35+rng()*.35;
+      level=Math.min(.205,level);
+
       const t=now+k*(.009+rng()*(.030-liveRush*.014));
 
       g.gain.setValueAtTime(.0001,t);
@@ -734,26 +765,60 @@ function fireCrackle(){
 function scheduleGhost(){
   clearTimeout(ghostTimer);
   if(!started||!ctx)return;
+
   const density=+$('GHOST').value/100;
+
+  // Keep polling lightly so raising the control from zero responds quickly,
+  // but zero itself never produces a ghost.
+  if(density<=.001){
+    ghostTimer=setTimeout(scheduleGhost,420);
+    return;
+  }
+
   const ent=+$('entropy').value/100;
-  const wait=3000+rng()*(17000-density*8500);
+  const collapse=Math.pow(Math.max(0,(ent-.62)/.38),2.0);
+
+  // GHOST controls both event probability and spacing.
+  const wait=(2100+rng()*(17500-density*13200))*(1-ent*.16-collapse*.12);
+
   ghostTimer=setTimeout(()=>{
-    if(started&&ctx&&ctx.state==='running'&&rng()<.28+density*.55){
-      const pitches=[146.83,164.81,196,220,293.66];
-      const o=ctx.createOscillator(),f=ctx.createBiquadFilter(),g=ctx.createGain();
-      o.type='sine';
-      o.frequency.value=pitches[Math.floor(rng()*pitches.length)]/(rng()<.3?2:1);
-      f.type='lowpass';f.frequency.value=700+rng()*1400;
-      const t=ctx.currentTime,a=1.8+rng()*3.2,d=6+rng()*11,amp=.018+density*.075;
-      g.gain.setValueAtTime(.0001,t);
-      g.gain.exponentialRampToValueAtTime(amp,t+a);
-      g.gain.exponentialRampToValueAtTime(.0001,t+a+d);
-      o.connect(f).connect(g);routeSource(g);o.start(t);o.stop(t+a+d+.1);
+    const live=+$('GHOST').value/100;
+    if(started&&ctx&&ctx.state==='running'&&live>.001){
+      const liveEnt=+$('entropy').value/100;
+      const liveCollapse=Math.pow(Math.max(0,(liveEnt-.62)/.38),2.0);
+      const chance=Math.min(.96,.10+live*.76+liveEnt*.08+liveCollapse*.14);
+
+      if(rng()<chance){
+        const pitches=[146.83,164.81,196,220,293.66];
+        const o=ctx.createOscillator(),f=ctx.createBiquadFilter(),g=ctx.createGain();
+        o.type='sine';
+
+        const base=pitches[Math.floor(rng()*pitches.length)]/(rng()<.3?2:1);
+        const unstable=1+(rng()-.5)*(liveEnt*.018+liveCollapse*.22);
+        o.frequency.value=Math.max(36,base*unstable);
+
+        f.type='lowpass';
+        f.frequency.value=650+rng()*1550;
+
+        const t=ctx.currentTime;
+        const a=1.4+rng()*3.4;
+        const d=5+rng()*12;
+        const amp=.010+live*.080;
+
+        g.gain.setValueAtTime(.0001,t);
+        g.gain.exponentialRampToValueAtTime(amp,t+a);
+        g.gain.exponentialRampToValueAtTime(.0001,t+a+d);
+
+        o.connect(f).connect(g);
+        routeSource(g);
+        o.start(t);
+        o.stop(t+a+d+.1);
+      }
     }
+
+    // GHOST owns only its own scheduler.
     scheduleGhost();
-    fireCrackle();
-    scheduleHumDrop();
-  },wait*(1-ent*.2));
+  },Math.max(650,wait));
 }
 
 function tick(){
@@ -765,8 +830,12 @@ function tick(){
     const jitter=.035+Math.pow(ent,1.5)*1.35;
     const pull=.026-ent*.009;
 
-    vals[n]+=(set-vals[n])*pull+(rng()-.5)*jitter;
-    vals[n]=Math.max(0,Math.min(100,vals[n]));
+    if(set<=0){
+      vals[n]=0;
+    }else{
+      vals[n]+=(set-vals[n])*pull+(rng()-.5)*jitter;
+      vals[n]=Math.max(0,Math.min(100,vals[n]));
+    }
     $(n+'Now').textContent=vals[n].toFixed(4);
 
     // Three small live parameters per generator.
@@ -776,8 +845,9 @@ function tick(){
       m1=Math.round(1500+vals[n]*38+(rng()-.5)*ent*850);
       m2=(7.5-vals[n]/100*4.2+(rng()-.5)*ent*1.4).toFixed(2);
     }else if(n==='DRONE'){
-      m0=(0.15+Math.pow(vals[n]/100,.72)*22+Math.pow(Math.max(0,(vals[n]/100-.72)/.28),1.55)*55+(rng()-.5)*ent*2.5).toFixed(2);
-      m1=((rng()-.5)*(3+ent*21)).toFixed(1);
+      const rootDrift=1+(rng()-.5)*(ent*.006+collapse*.12);
+      m0=(73.42*rootDrift).toFixed(2);
+      m1=((rng()-.5)*(3+ent*21+collapse*34)).toFixed(1);
       m2=(0.20+vals[n]/100*.68+(rng()-.5)*ent*.10).toFixed(3);
     }else if(n==='GHOST'){
       m0=(0.4+vals[n]/100*5.8+(rng()-.5)*ent*.8).toFixed(2);
@@ -812,20 +882,22 @@ function tick(){
     const waveAmt=vals.TIDAL/100;
     const loud=Math.min(1,waveAmt*2); // 50 = previous max loudness
 
-    // Above 50, loudness stops increasing. Only surf character intensifies.
-    airGain.gain.setTargetAtTime(.002+loud*.026,ctx.currentTime,1.1);
+    // Above 50, loudness largely plateaus. At zero the source is fully silent.
+    const tidalLevel=waveAmt<=0 ? 0 : loud*.030;
+    airGain.gain.setTargetAtTime(tidalLevel,ctx.currentTime,.55);
 
     if(waveGain){
-      const base=.34+loud*.10;
+      const base=.40+loud*.08;
       waveGain.gain.setTargetAtTime(base,ctx.currentTime,.75);
     }
     if(waveLfo){
-      const rate=.045+waveAmt*.075+ent*.28+collapse*1.15;
+      const rate=.045+waveAmt*.075+ent*.18+collapse*.72;
       waveLfo.frequency.setTargetAtTime(rate,ctx.currentTime,.65);
     }
     if(waveLfoGain){
-      const agitation=.10+waveAmt*.28+ent*.48+collapse*.95;
-      waveLfoGain.gain.setTargetAtTime(agitation,ctx.currentTime,.65);
+      // Slow swell depth, deliberately kept below the base gain.
+      const agitation=.025+waveAmt*.080+ent*.035+collapse*.11;
+      waveLfoGain.gain.setTargetAtTime(waveAmt<=0?0:agitation,ctx.currentTime,.65);
     }
     if(waveFilter){
       const centre=360+waveAmt*1220+(rng()-.5)*(ent*900+collapse*4200);
@@ -833,32 +905,37 @@ function tick(){
       waveFilter.Q.setTargetAtTime(.24+waveAmt*.18+ent*.58+collapse*4.2,ctx.currentTime,.35);
     }
 
+    const droneAmt=vals.DRONE/100;
+    const droneWobble=Math.max(.20,1+(rng()-.5)*collapse*.72);
     droneGain.gain.setTargetAtTime(
-      Math.max(.001,.006+vals.DRONE/100*.120 + (rng()-.5)*collapse*.11),
-      ctx.currentTime,.22+(.8-ent*.6)
+      droneAmt<=0 ? 0 : droneAmt*.140*droneWobble,
+      ctx.currentTime,.18+(.70-ent*.48)
     );
 
-    // At high entropy the harmonic field loses tuning coherence.
-    if(nodes&&collapse>0){
-      nodes.forEach(n=>{
-        if(n&&n.frequency&&typeof n.frequency.setTargetAtTime==='function'){
-          const base=n.frequency.value||80;
-          const ratio=1+(rng()-.5)*(ent*.004+collapse*.16);
-          if(base>30&&base<2000){
-            n.frequency.setTargetAtTime(Math.max(18,base*ratio),ctx.currentTime,.18);
-          }
-        }
+    // Entropy bends each oscillator around its fixed home pitch.
+    // It can become badly detuned, but it never permanently random-walks away.
+    if(droneOscs&&droneOscs.length){
+      droneOscs.forEach(({osc,baseHz})=>{
+        if(!osc||!osc.frequency)return;
+        const ratio=1+(rng()-.5)*(ent*.006+collapse*.19);
+        osc.frequency.setTargetAtTime(
+          Math.max(18,baseHz*ratio),
+          ctx.currentTime,.16+(.30-collapse*.16)
+        );
       });
     }
 
     if(humGain&&humOsc1&&humOsc2){
       const humAmt=vals.HUM/100;
-      humGain.gain.setTargetAtTime(humAmt*.105,ctx.currentTime,.35);
+      humGain.gain.setTargetAtTime(humAmt<=0?0:humAmt*.105,ctx.currentTime,.35);
       const mains=49.85+(rng()-.5)*(ent*.28+collapse*9.0);
       humOsc1.frequency.setTargetAtTime(mains,ctx.currentTime,.9);
       humOsc2.frequency.setTargetAtTime(Math.max(25,mains*2+(rng()-.5)*(ent*.9+collapse*26)),ctx.currentTime,.20+(.7-collapse*.5));
       if(humLfo) humLfo.frequency.setTargetAtTime(.10+humAmt*.28+ent*.70+collapse*7.5,ctx.currentTime,.28);
-      if(humLfoGain) humLfoGain.gain.setTargetAtTime(.002+humAmt*.010+ent*.010+collapse*.055,ctx.currentTime,.24);
+      if(humLfoGain){
+        const humMod=humAmt<=0 ? 0 : humAmt*(.003+humAmt*.009+ent*.010+collapse*.045);
+        humLfoGain.gain.setTargetAtTime(humMod,ctx.currentTime,.24);
+      }
     }
   }
 
