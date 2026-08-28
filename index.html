@@ -27,19 +27,41 @@ body{-webkit-text-size-adjust:100%;overflow:hidden}
   background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 4px);
 }
 header{
-  position:relative;z-index:2;display:flex;justify-content:space-between;align-items:flex-start;
+  position:relative;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:8px;
   border-bottom:1px solid var(--line);padding-bottom:8px;flex:0 0 auto;
 }
 h1{font-weight:400;font-size:15px;letter-spacing:.15em;margin:0}
 .micro{font-size:8px;color:var(--dim);letter-spacing:.09em;line-height:1.45}
-.status{text-align:right;font-size:9px;color:var(--dim);line-height:1.5}
-.topStart{
-  appearance:none;-webkit-appearance:none;background:transparent;color:var(--ink);
-  border:0;border-bottom:1px solid var(--line);padding:0 0 3px;margin:0 0 2px;
-  font:9px "Courier New",monospace;letter-spacing:.13em;min-height:22px;
-  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+.status{
+  display:flex;align-items:center;justify-content:flex-end;gap:7px;
+  text-align:right;font-size:8px;color:var(--dim);white-space:nowrap;
 }
-.topStart:active{opacity:.55}
+.transport{display:flex;align-items:center;gap:6px}
+.topStart,.reroll{
+  appearance:none;-webkit-appearance:none;background:transparent;color:var(--ink);
+  border:0;border-bottom:1px solid var(--line);padding:0 0 3px;margin:0;
+  font:8px "Courier New",monospace;letter-spacing:.10em;min-height:22px;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;white-space:nowrap;
+}
+.topStart:active,.reroll:active{opacity:.55}
+.seedReadout{
+  font-size:6.5px;letter-spacing:.08em;color:var(--dim);
+  border-left:1px solid var(--faint);padding-left:6px;
+}
+.seedReadout b{font-weight:400;color:var(--ink);letter-spacing:.06em}
+.clockBox{
+  font-size:7px;letter-spacing:.08em;color:var(--dim);
+  border-left:1px solid var(--line);padding-left:7px;
+}
+.clockBox #clock{color:var(--ink);font-size:8px}
+@media(max-width:390px){
+  .status{gap:5px}
+  .transport{gap:5px}
+  .topStart,.reroll{font-size:7.2px}
+  .seedReadout{font-size:5.8px;padding-left:4px}
+  .clockBox{padding-left:5px;font-size:6px}
+  .clockBox #clock{font-size:7px}
+}
 
 .main{
   position:relative;z-index:2;display:grid;grid-template-columns:42% 58%;gap:10px;
@@ -209,7 +231,14 @@ footer{
     <h1>HAMBIENT</h1>
     <div class="micro">HM-001 / PROCEDURAL FIELD</div>
   </div>
-  <div class="status"><button id="start" class="topStart">▶ START</button><br><span id="clock">00:00:00</span></div>
+  <div class="status">
+    <div class="transport">
+      <button id="start" class="topStart">▶ START</button>
+      <button id="reroll" class="reroll" aria-label="Reroll seed">⚄ REROLL</button>
+      <span class="seedReadout">SEED <b id="seedValue">--------</b></span>
+    </div>
+    <span class="clockBox">TIME <span id="clock">00:00:00</span></span>
+  </div>
 </header>
 
 <section class="main">
@@ -247,7 +276,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 1.7.0</span><span>HM-001</span></footer>
+  <footer><span>ver. 1.9.0</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -281,16 +310,41 @@ defs.forEach(([n])=>{
   }
 });
 
-let ctx=null, master=null, comp=null;
+let ctx=null, master=null, comp=null, spacePan=null, spaceEarly=null, spaceEarlyGain=null, spaceEarlyTap2=null, spaceEarlyGain2=null;
 let dryBus=null, spaceFilter=null;
 let echoDelay=null, echoFeedback=null, echoWet=null;
 let hall=null, hallWet=null;
-let airGain=null, droneGain=null, waveGain=null, waveFilter=null, waveLfo=null, waveLfoGain=null, humGain=null, humOsc1=null, humOsc2=null, humLfo=null, humLfoGain=null;
+let airGain=null, droneGain=null, waveGain=null, waveFilter=null, waveLfo=null, waveLfoGain=null, waveSource=null, humGain=null, humOsc1=null, humOsc2=null, humLfo=null, humLfoGain=null, humCut=null, humDropTimer=null;
 let started=false,startTime=0,timer=null,ghostTimer=null,crackleTimer=null;
-let seed=Math.floor(Math.random()*0xffffffff),phase=0,nodes=[];
+function freshSeed(){
+  if(globalThis.crypto&&crypto.getRandomValues){
+    const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]>>>0;
+  }
+  return (Math.random()*0xffffffff)>>>0;
+}
+let baseSeed=freshSeed(),seed=baseSeed,phase=0,nodes=[];
 let vals={TIDAL:50,DRONE:35,GHOST:18,PYRO:16,HUM:12,entropy:43};
 
 function rng(){seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
+function seedHex(v){return (v>>>0).toString(16).toUpperCase().padStart(8,'0')}
+function showSeed(){const el=$('seedValue');if(el)el.textContent=seedHex(baseSeed)}
+function rerollSeed(){
+  baseSeed=freshSeed();
+  seed=baseSeed;
+  phase=(baseSeed/4294967296)*Math.PI*2;
+  showSeed();
+
+  // Re-seed the continuously audible random textures when already running.
+  if(ctx){
+    try{if(waveSource)waveSource.buffer=noiseBuffer()}catch(e){}
+    try{if(hall)hall.buffer=makeHallIR()}catch(e){}
+  }
+
+  // Give internal meters a fresh "machine state" without moving user sliders.
+  defs.forEach(([n])=>{
+    vals[n]=+$(`${n}`)?.value || vals[n];
+  });
+}
 function noiseBuffer(sec=2){
   const b=ctx.createBuffer(1,Math.floor(ctx.sampleRate*sec),ctx.sampleRate);
   const d=b.getChannelData(0);
@@ -329,7 +383,17 @@ function initAudio(){
   dryBus=ctx.createGain();
   spaceFilter=ctx.createBiquadFilter();
   spaceFilter.type='lowpass';spaceFilter.frequency.value=4200;spaceFilter.Q.value=.25;
-  dryBus.connect(spaceFilter);spaceFilter.connect(comp);
+
+  // SPACE: distance + stereo drift + early reflections
+  spacePan=ctx.createStereoPanner();
+  dryBus.connect(spaceFilter).connect(spacePan).connect(comp);
+
+  spaceEarly=ctx.createDelay(0.25);
+  spaceEarlyTap2=ctx.createDelay(0.35);
+  spaceEarlyGain=ctx.createGain();
+  spaceEarlyGain2=ctx.createGain();
+  dryBus.connect(spaceEarly).connect(spaceEarlyGain).connect(comp);
+  dryBus.connect(spaceEarlyTap2).connect(spaceEarlyGain2).connect(comp);
 
   echoDelay=ctx.createDelay(2.5);
   echoFeedback=ctx.createGain();
@@ -369,7 +433,10 @@ function initAudio(){
   // HUM: low mains-like electrical resonance + slight mechanical wobble
   humGain=ctx.createGain();
   humGain.gain.value=.012;
-  routeSource(humGain);
+  humCut=ctx.createGain();
+  humCut.gain.value=1;
+  humGain.connect(humCut);
+  routeSource(humCut);
 
   humOsc1=ctx.createOscillator();
   humOsc1.type='sine';
@@ -411,20 +478,74 @@ async function ensureAudio(){
     return false;
   }
 }
+
+function scheduleHumDrop(){
+  clearTimeout(humDropTimer);
+  if(!started||!ctx||!humCut)return;
+
+  const amt=+$('HUM').value/100;
+  const ent=+$('entropy').value/100;
+  const wait=2200+rng()*(9000-amt*4200-ent*2200);
+
+  humDropTimer=setTimeout(()=>{
+    if(started&&ctx.state==='running'&&amt>.03&&rng()<.18+amt*.45+ent*.25){
+      const t=ctx.currentTime;
+      const dip=.025+rng()*.11;
+      humCut.gain.cancelScheduledValues(t);
+      humCut.gain.setValueAtTime(Math.max(.0001,humCut.gain.value),t);
+      humCut.gain.exponentialRampToValueAtTime(.0002,t+.004);
+      humCut.gain.exponentialRampToValueAtTime(1,t+dip);
+
+      // tiny electrical transient after the cut
+      const b=ctx.createBuffer(1,Math.floor(ctx.sampleRate*.018),ctx.sampleRate);
+      const d=b.getChannelData(0);
+      for(let i=0;i<d.length;i++){
+        const p=i/d.length;
+        d[i]=(rng()*2-1)*Math.pow(1-p,3);
+      }
+      const s=ctx.createBufferSource(),hp=ctx.createBiquadFilter(),g=ctx.createGain();
+      s.buffer=b;
+      hp.type='highpass';
+      hp.frequency.value=900+rng()*1400;
+      g.gain.value=.006+amt*.022;
+      s.connect(hp).connect(g).connect(dryBus);
+      s.start(t+dip*.35);
+      s.stop(t+dip*.35+.02);
+    }
+    scheduleHumDrop();
+  },Math.max(900,wait));
+}
+
 function updateFX(){
   if(!ctx)return;
   const s=+$('space').value/100;
   const e=+$('echo').value/100;
   const h=+$('hall').value/100;
   const v=+$('volume').value/100;
-  spaceFilter.frequency.setTargetAtTime(7800-s*6100,ctx.currentTime,.45);
-  dryBus.gain.setTargetAtTime(1-s*.26,ctx.currentTime,.35);
+
+  // SPACE = distance / width / early reflections / drift
+  spaceFilter.frequency.setTargetAtTime(7600-s*6200,ctx.currentTime,.45);
+  dryBus.gain.setTargetAtTime(1-s*.34,ctx.currentTime,.35);
+
+  if(spaceEarly){
+    spaceEarly.delayTime.setTargetAtTime(.018+s*.085,ctx.currentTime,.35);
+    spaceEarlyGain.gain.setTargetAtTime(s*.24,ctx.currentTime,.25);
+  }
+  if(spaceEarlyTap2){
+    spaceEarlyTap2.delayTime.setTargetAtTime(.037+s*.145,ctx.currentTime,.35);
+    spaceEarlyGain2.gain.setTargetAtTime(s*.16,ctx.currentTime,.25);
+  }
+
+  // ECHO
   const ec=Math.pow(e,1.18);
   echoDelay.delayTime.setTargetAtTime(.09+ec*1.42,ctx.currentTime,.18);
   echoFeedback.gain.setTargetAtTime(Math.min(.945,ec*.975),ctx.currentTime,.18);
   echoWet.gain.setTargetAtTime(ec*1.05,ctx.currentTime,.16);
+
+  // HALL
   const hc=Math.pow(h,.74);
-  hallWet.gain.setTargetAtTime(hc*1.42,ctx.currentTime,.20);
+  hallWet.gain.setTargetAtTime(hc*1.42 + s*.28,ctx.currentTime,.20);
+
   master.gain.setTargetAtTime(v*.60,ctx.currentTime,.10);
 }
 
@@ -518,6 +639,7 @@ function scheduleGhost(){
     }
     scheduleGhost();
     fireCrackle();
+    scheduleHumDrop();
   },wait*(1-ent*.2));
 }
 
@@ -574,33 +696,35 @@ function tick(){
 
   if(ctx&&airGain&&droneGain){
     const waveAmt=vals.TIDAL/100;
+    const loud=Math.min(1,waveAmt*2); // 50 = previous max loudness
 
-    // TIDAL gets more obviously surf-like as ENTROPY rises:
-    // stronger tidal pumping, brighter foam, less predictable motion.
-    airGain.gain.setTargetAtTime(.010+waveAmt*.090,ctx.currentTime,1.1);
+    // Above 50, loudness stops increasing. Only surf character intensifies.
+    airGain.gain.setTargetAtTime(.006+loud*.074,ctx.currentTime,1.1);
+
     if(waveGain){
-      const base=.56+waveAmt*.20;
-      waveGain.gain.setTargetAtTime(base,ctx.currentTime,.8);
+      const base=.48+loud*.18;
+      waveGain.gain.setTargetAtTime(base,ctx.currentTime,.75);
     }
     if(waveLfo){
-      const rate=.055+waveAmt*.055+ent*.16;
-      waveLfo.frequency.setTargetAtTime(rate,ctx.currentTime,.7);
+      const rate=.050+waveAmt*.075+ent*.19;
+      waveLfo.frequency.setTargetAtTime(rate,ctx.currentTime,.65);
     }
     if(waveLfoGain){
-      waveLfoGain.gain.setTargetAtTime(.16+waveAmt*.20+ent*.38,ctx.currentTime,.7);
+      const agitation=.14+waveAmt*.30+ent*.42;
+      waveLfoGain.gain.setTargetAtTime(agitation,ctx.currentTime,.65);
     }
     if(waveFilter){
-      const centre=430+waveAmt*1050+(rng()-.5)*ent*550;
-      waveFilter.frequency.setTargetAtTime(Math.max(180,centre),ctx.currentTime,.85);
-      waveFilter.Q.setTargetAtTime(.30+ent*.42,ctx.currentTime,.9);
+      const centre=380+waveAmt*1320+(rng()-.5)*ent*720;
+      waveFilter.frequency.setTargetAtTime(Math.max(160,centre),ctx.currentTime,.75);
+      waveFilter.Q.setTargetAtTime(.28+waveAmt*.18+ent*.48,ctx.currentTime,.8);
     }
 
     droneGain.gain.setTargetAtTime(.003+vals.DRONE/100*.065,ctx.currentTime,1.95);
 
     if(humGain&&humOsc1&&humOsc2){
       const humAmt=vals.HUM/100;
-      humGain.gain.setTargetAtTime(.001+humAmt*.032,ctx.currentTime,.7);
-      const mains=49.85+humAmt*.35+(rng()-.5)*ent*.22;
+      humGain.gain.setTargetAtTime(humAmt*.055,ctx.currentTime,.45);
+      const mains=49.85+(rng()-.5)*ent*.18;
       humOsc1.frequency.setTargetAtTime(mains,ctx.currentTime,.9);
       humOsc2.frequency.setTargetAtTime(mains*2+(rng()-.5)*ent*.6,ctx.currentTime,.9);
       if(humLfo) humLfo.frequency.setTargetAtTime(.10+humAmt*.28+ent*.55,ctx.currentTime,.8);
@@ -608,9 +732,10 @@ function tick(){
     }
   }
 
-  if(ctx&&waveGain){
-    const shimmer=(rng()-.5)*ent*.18;
-    waveGain.gain.setTargetAtTime(Math.max(.20,.60+vals.TIDAL/100*.20+shimmer),ctx.currentTime,.35+(.8-ent*.5));
+  if(ctx&&spacePan){
+    const s=+$('space').value/100;
+    const pan=Math.sin(phase*.37)*s*.72 + Math.sin(phase*.11)*s*.18;
+    spacePan.pan.setTargetAtTime(pan,ctx.currentTime,.55);
   }
   phase+=.009+ent*.034;
   drawHamster(ent);
