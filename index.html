@@ -217,7 +217,7 @@ footer{
 .left .param{
   min-height:0 !important;
   height:auto !important;
-  padding:5px 8px 4px 7px !important;
+  padding:5px 8px 4px 12px !important;
   border-bottom:1px solid var(--line) !important;
   overflow:hidden !important;
   display:grid !important;
@@ -275,7 +275,7 @@ footer{
   <div class="spaceRow">
     <label>DISTANCE</label>
     <input id="distance" type="range" min="0" max="100" value="72">
-    <span class="num" id="distanceV">72</span>
+    <span class="num" id="distanceV">10</span>
   </div>
 
   <div class="fx">
@@ -293,7 +293,7 @@ footer{
     </div>
   </div>
 
-  <footer><span>ver. 2.2.1</span><span>HM-001</span></footer>
+  <footer><span>ver. 2.2.2</span><span>HM-001</span></footer>
 </section>
 </main>
 
@@ -568,20 +568,20 @@ function updateFX(){
   // DISTANCE: deliberately obvious. Direct sound retreats hard,
   // loses high frequencies, and reflections take over.
   const d=Math.pow(s,1.12);
-  const direct=Math.max(.16,1-d*.84);
-  const cutoff=11000*Math.pow(0.105,d); // ~11 kHz near -> ~1.15 kHz far
+  const direct=Math.max(.12,1-d*.88);
+  const cutoff=14500*Math.pow(0.035,d); // ~14.5 kHz near -> ~500 Hz far
 
   spaceFilter.frequency.setTargetAtTime(cutoff,ctx.currentTime,.28);
-  spaceFilter.Q.setTargetAtTime(.22+d*.20,ctx.currentTime,.35);
+  spaceFilter.Q.setTargetAtTime(.30+d*.72,ctx.currentTime,.24);
   dryBus.gain.setTargetAtTime(direct,ctx.currentTime,.22);
 
   if(spaceEarly){
     spaceEarly.delayTime.setTargetAtTime(.012+d*.115,ctx.currentTime,.25);
-    spaceEarlyGain.gain.setTargetAtTime(d*.48,ctx.currentTime,.20);
+    spaceEarlyGain.gain.setTargetAtTime(d*.56,ctx.currentTime,.18);
   }
   if(spaceEarlyTap2){
     spaceEarlyTap2.delayTime.setTargetAtTime(.027+d*.205,ctx.currentTime,.25);
-    spaceEarlyGain2.gain.setTargetAtTime(d*.34,ctx.currentTime,.20);
+    spaceEarlyGain2.gain.setTargetAtTime(d*.40,ctx.currentTime,.18);
   }
 
   // ECHO remains its own control.
@@ -592,7 +592,7 @@ function updateFX(){
 
   // HALL remains independent, but distant sources naturally feed more room.
   const hc=Math.pow(h,.74);
-  hallWet.gain.setTargetAtTime(hc*1.42+d*.62,ctx.currentTime,.20);
+  hallWet.gain.setTargetAtTime(hc*1.42+d*.78,ctx.currentTime,.18);
 
   master.gain.setTargetAtTime(v*.60,ctx.currentTime,.10);
 }
